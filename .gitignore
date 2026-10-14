@@ -1,0 +1,49 @@
+# secrets
+.env
+.env.*
+*.env
+!.env.example
+!.env.client
+
+# build
+/bin/
+/ftb-demo
+/bot
+*.exe
+/minions/tgdrive/tgdrive
+# `go build ./minions/<x>/` drops the binary in CWD (repo root)
+/dialog-probe
+/i10-sample
+
+# runtime data
+*.db
+*.sqlite
+*.log
+/recordings/
+/data/
+
+# opencode agent scratch (keep plan.md tracked)
+.agents/changes.md
+.agents/backlog.md
+.agents/test-report.md
+.agents/summary.md
+
+# Claude Code — per-user local overrides (settings.json IS tracked)
+.claude/settings.local.json
+
+# session-recall — per-project, local-only context (session-log.md not caught by *.log)
+.claude/session-log.md
+.claude/sessions.db
+
+# Weekly dreaming reports — tracked so the [applied YYYY-MM-DD] annotation
+# history survives across machines. Same convention as ~/wrk/common.
+#.claude/dreaming/reports/   ← intentionally NOT ignored
+# Run log only (per-machine scratch, not part of the report) — already
+# caught by the blanket *.log rule above, listed here for clarity.
+.claude/dreaming/reports/.dreaming.log
+
+# throwaway scratch (dev helpers live in minions/, which IS tracked)
+tmp/
+
+# engagement-specific notes — local only, never published
+.engage/
