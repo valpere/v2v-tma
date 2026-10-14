@@ -18,7 +18,8 @@
   const state = {
     domainId: 'pizzeria',
     domains: {},
-    cart: [], // { item_id, title, price_uah, price_stars, icon, quantity }
+    sessionId: null,
+    cart: { items: [], count: 0, total_uah: 0, total_stars: 0 }, // authoritative copy from the server
     voiceMode: false, // false = Текст (Zero-Cost), true = Голос On-Demand
     isRecording: false,
     mediaRecorder: null,
@@ -65,23 +66,52 @@
     }
   }
 
+  // API helper: every call carries the Telegram initData; the server enforces it.
+  async function api(method, path, body) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (tg?.initData) headers['Authorization'] = 'tma ' + tg.initData;
+    const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    return data;
+  }
+
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function notify(msg) {
+    if (tg?.showAlert) tg.showAlert(msg); else alert(msg);
+  }
+
   // 5. Завантаження доменів та каталогу
   async function loadDomains() {
     try {
-      const res = await fetch('/api/domains');
-      const data = await res.json();
+      const data = await api('GET', '/v1/topics');
       data.forEach(d => state.domains[d.id] = d);
-      renderDomain(state.domainId);
+      dom.domainSelect.innerHTML = data.map(d => `<option value="${esc(d.id)}" class="bg-slate-900 text-white">${esc(d.name)}</option>`).join('');
+      if (!state.domains[state.domainId] && data.length) state.domainId = data[0].id;
+      await renderDomain(state.domainId);
     } catch (err) {
-      console.warn('API error, using local fallback:', err);
+      dom.conciergeMessage.textContent = 'Сервер недоступний. Спробуйте пізніше.';
+      console.warn('API error:', err);
     }
   }
 
-  function renderDomain(domainId) {
+  async function renderDomain(domainId) {
     const d = state.domains[domainId];
     if (!d) return;
 
     state.domainId = domainId;
+    state.sessionId = null;
+    state.cart = { items: [], count: 0, total_uah: 0, total_stars: 0 };
+    updateCartUI();
+    try {
+      const s = await api('POST', '/v1/sessions', { topic: domainId });
+      state.sessionId = s.session_id;
+    } catch (err) {
+      dom.conciergeMessage.textContent = 'Не вдалося почати сесію: ' + err.message;
+    }
     dom.domainSelect.value = domainId;
     dom.domainIcon.textContent = d.icon;
     dom.domainTagline.textContent = d.tagline;
@@ -105,19 +135,19 @@
     dom.catalogItems.innerHTML = '';
     (d.items || []).forEach(item => {
       const card = document.createElement('div');
-      card.id = `item-card-${item.id}`;
+      card.id = `item-card-${item.item_id}`;
       card.className = 'item-card bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 flex items-center justify-between gap-3 transition-all duration-300 shadow-sm';
       card.innerHTML = `
         <div class="flex items-center gap-3 min-w-0">
           <div class="w-12 h-12 rounded-xl bg-slate-800 flex items-center justify-center text-2xl shrink-0 border border-slate-700/40">
-            ${item.icon || '📦'}
+            ${esc(item.icon || '📦')}
           </div>
           <div class="min-w-0">
             <div class="flex items-center gap-1.5">
-              <h4 class="text-xs font-bold text-white truncate">${item.title}</h4>
-              ${item.badge ? `<span class="bg-purple-950 text-purple-300 border border-purple-500/30 text-[9px] font-bold px-1.5 py-0.2 rounded-full">${item.badge}</span>` : ''}
+              <h4 class="text-xs font-bold text-white truncate">${esc(item.title)}</h4>
+              ${item.badge ? `<span class="bg-purple-950 text-purple-300 border border-purple-500/30 text-[9px] font-bold px-1.5 py-0.2 rounded-full">${esc(item.badge)}</span>` : ''}
             </div>
-            <p class="text-[11px] text-slate-400 line-clamp-1 mt-0.5">${item.description}</p>
+            <p class="text-[11px] text-slate-400 line-clamp-1 mt-0.5">${esc(item.description)}</p>
             <div class="flex items-center gap-2 mt-1">
               <span class="text-xs font-black text-slate-200">${item.price_uah} грн</span>
               <span class="text-[11px] font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded flex items-center gap-0.5">
@@ -126,47 +156,40 @@
             </div>
           </div>
         </div>
-        <button class="add-btn shrink-0 w-8 h-8 rounded-xl bg-slate-800 hover:bg-purple-600 text-purple-300 hover:text-white border border-slate-700 flex items-center justify-center font-bold text-base transition active:scale-90" data-id="${item.id}">
+        <button class="add-btn shrink-0 w-8 h-8 rounded-xl bg-slate-800 hover:bg-purple-600 text-purple-300 hover:text-white border border-slate-700 flex items-center justify-center font-bold text-base transition active:scale-90" data-id="${esc(item.item_id)}">
           +
         </button>
       `;
 
       card.querySelector('.add-btn').onclick = () => {
         triggerHaptic('medium');
-        addToCart(item);
+        addToCart(item.item_id);
       };
 
       dom.catalogItems.appendChild(card);
     });
   }
 
-  // 6. Робота з кошиком
-  function addToCart(item, quantity = 1) {
-    const existing = state.cart.find(c => c.item_id === item.id || c.item_id === item.item_id);
-    if (existing) {
-      existing.quantity += quantity;
-    } else {
-      state.cart.push({
-        item_id: item.id || item.item_id,
-        title: item.title,
-        price_uah: item.price_uah,
-        price_stars: item.price_stars,
-        icon: item.icon || '📦',
-        quantity: quantity
-      });
-    }
-    updateCartUI();
+  function qtyOf(itemId) {
+    return state.cart.items.find(c => c.item_id === itemId)?.quantity || 0;
   }
 
-  function removeFromCart(itemId) {
-    state.cart = state.cart.filter(c => c.item_id !== itemId);
-    updateCartUI();
+  // The server owns the cart: every change is a PUT and the response is the new truth.
+  async function setQty(itemId, quantity) {
+    if (!state.sessionId) return;
+    try {
+      state.cart = await api('PUT', `/v1/sessions/${state.sessionId}/cart/items/${encodeURIComponent(itemId)}`, { quantity });
+      updateCartUI();
+    } catch (err) {
+      notify('Не вдалося змінити кошик: ' + err.message);
+    }
   }
+
+  const addToCart = itemId => setQty(itemId, qtyOf(itemId) + 1);
+  const removeFromCart = itemId => setQty(itemId, 0);
 
   function updateCartUI() {
-    const totalCount = state.cart.reduce((sum, i) => sum + i.quantity, 0);
-    const totalUAH = state.cart.reduce((sum, i) => sum + (i.price_uah * i.quantity), 0);
-    const totalStars = state.cart.reduce((sum, i) => sum + (i.price_stars * i.quantity), 0);
+    const { count: totalCount, total_uah: totalUAH, total_stars: totalStars } = state.cart;
 
     if (totalCount > 0) {
       dom.cartBar.classList.remove('hidden');
@@ -187,23 +210,23 @@
 
   function renderModalItems() {
     dom.modalCartItems.innerHTML = '';
-    if (state.cart.length === 0) {
+    if (state.cart.items.length === 0) {
       dom.modalCartItems.innerHTML = '<div class="text-xs text-slate-500 text-center py-4">Кошик порожній</div>';
       return;
     }
 
-    state.cart.forEach(item => {
+    state.cart.items.forEach(item => {
       const row = document.createElement('div');
       row.className = 'flex items-center justify-between bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50';
       row.innerHTML = `
         <div class="flex items-center gap-2 min-w-0">
-          <span class="text-lg">${item.icon}</span>
+          <span class="text-lg">${esc(item.icon)}</span>
           <div class="min-w-0">
-            <div class="text-xs font-bold text-white truncate">${item.title}</div>
+            <div class="text-xs font-bold text-white truncate">${esc(item.title)}</div>
             <div class="text-[10px] text-slate-400">${item.quantity} x ${item.price_uah} грн (${item.price_stars} ⭐)</div>
           </div>
         </div>
-        <button class="remove-btn text-rose-400 hover:text-rose-300 p-1 text-xs" data-id="${item.item_id}">✕</button>
+        <button class="remove-btn text-rose-400 hover:text-rose-300 p-1 text-xs">✕</button>
       `;
       row.querySelector('.remove-btn').onclick = () => {
         triggerHaptic('light');
@@ -221,29 +244,20 @@
     animateWave(true);
 
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          domain_id: state.domainId,
-          text: text,
-          lang: 'uk',
-          init_data: tg?.initData || 'dev_demo_user'
-        })
-      });
-
-      const data = await res.json();
+      const data = await api('POST', `/v1/sessions/${state.sessionId}/messages`, { text, lang: 'uk' });
       animateWave(false);
 
       // Виведення репліки
-      dom.conciergeMessage.textContent = data.reply_text;
+      dom.conciergeMessage.textContent = data.reply;
 
       // Якщо активний голосовий режим — озвучуємо нативним браузерним SpeechSynthesis (Zero-Cost)
       if (state.voiceMode && window.speechSynthesis) {
-        speakText(data.reply_text);
+        speakText(data.reply);
       }
 
-      // Виконання UI-мутацій
+      // Кошик — авторитетна копія із сервера; ui_actions лише анімують
+      state.cart = data.cart;
+      updateCartUI();
       applyUIActions(data.ui_actions || []);
 
     } catch (err) {
@@ -270,8 +284,7 @@
         }
 
         case 'ADD_TO_CART': {
-          triggerHaptic('success');
-          addToCart(act.payload, act.payload.quantity || 1);
+          triggerHaptic('success'); // the cart itself already came back in the response
           break;
         }
 
@@ -363,55 +376,52 @@
   }
 
   // 12. Оплата через Telegram Stars
+  async function clearCart() {
+    try {
+      state.cart = await api('DELETE', `/v1/sessions/${state.sessionId}/cart`);
+    } catch (err) {
+      console.warn('clear cart failed:', err);
+    }
+    updateCartUI();
+    closeCheckoutModal();
+  }
+
   async function payWithStars() {
-    const totalStars = state.cart.reduce((sum, i) => sum + (i.price_stars * i.quantity), 0);
-    if (totalStars <= 0) return;
+    if (state.cart.count <= 0) return;
 
     triggerHaptic('medium');
     dom.payStarsBtn.disabled = true;
     dom.payStarsBtn.textContent = 'Формуємо рахунок у Stars...';
-
-    try {
-      const res = await fetch('/api/checkout/stars', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          domain_id: state.domainId,
-          stars_amount: totalStars,
-          cart_items: state.cart,
-          init_data: tg?.initData || 'dev_demo_user'
-        })
-      });
-
-      const data = await res.json();
+    const resetBtn = () => {
       dom.payStarsBtn.disabled = false;
       dom.payStarsBtn.innerHTML = '<span>Підтвердити оплату через Stars</span><span>⭐</span>';
+    };
 
-      if (tg?.openInvoice && data.invoice_url) {
-        // Відкриваємо офіційну платіжну шторку Telegram Stars
+    try {
+      // No amounts are sent: the server prices its own copy of the cart.
+      const data = await api('POST', `/v1/sessions/${state.sessionId}/checkout`);
+      resetBtn();
+
+      if (!data.mock && tg?.openInvoice) {
+        // Офіційна платіжна шторка Telegram Stars
         tg.openInvoice(data.invoice_url, (status) => {
           if (status === 'paid') {
             triggerHaptic('success');
-            alert('Оплата через Telegram Stars успішна! Дякуємо за замовлення.');
-            state.cart = [];
-            updateCartUI();
-            closeCheckoutModal();
+            notify('Оплата через Telegram Stars успішна! Дякуємо за замовлення.');
+            clearCart();
           } else {
             triggerHaptic('warning');
           }
         });
       } else {
-        // Демо-повідомлення
+        // Демо-режим: сервер без токена бота повертає фейкове посилання
         triggerHaptic('success');
-        alert(`[Demo Mode] Рахунок на ${totalStars} ⭐ Stars згенеровано!\nInvoice: ${data.invoice_url}`);
-        state.cart = [];
-        updateCartUI();
-        closeCheckoutModal();
+        notify(`[Demo] Рахунок на ${data.stars} ⭐ сформовано (оплата не виконується).`);
+        clearCart();
       }
     } catch (err) {
-      dom.payStarsBtn.disabled = false;
-      dom.payStarsBtn.innerHTML = '<span>Підтвердити оплату через Stars</span><span>⭐</span>';
-      alert('Помилка генерації рахунку Stars.');
+      resetBtn();
+      notify('Помилка формування рахунку: ' + err.message);
     }
   }
 

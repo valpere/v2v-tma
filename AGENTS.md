@@ -1,80 +1,51 @@
 # AGENTS.md — v2v-tma
 
-An interactive **Telegram Mini App (TMA)** featuring a dual-mode (Voice & Text) AI Concierge for multi-domain commerce with real-time **Voice-to-UI synchronization** and native **Telegram Stars (XTR)** payments.
+Telegram Mini App (TMA): the **frontend** of the v2v-demo voice/text concierge,
+with Voice-to-UI synchronisation and Telegram Stars (XTR) payments. **Live
+prototype, not an MVP** — read `docs/HANDOFF.md` first (status, what is stub,
+ordered backlog). The API between this client and the engine is `docs/API.md`.
 
-Built as a verified, high-converting showcase and reusable architectural core for client bids and live demonstrations. Follow these directives strictly when working on or extending this codebase.
+## Architecture in one paragraph
+This repo is a thin client. The engine (sessions, catalog, cart, LLM, STT/TTS,
+payment confirmation) belongs to `~/wrk/demo/v2v-demo/v2v-demo` and will be
+reached over `/v1` (`ENGINE_URL` makes `cmd/server` proxy to it). Until the
+engine exposes `/v1`, `cmd/server` answers it with a deterministic **stub**. Other
+frontends (plain web, the bot) are clients of the same API.
 
----
+## Guardrails
+1. **Text mode is the default and costs nothing.** No speculative cloud STT/TTS;
+   free client-side Web Speech (`SpeechSynthesis`) for audio in text mode; cloud
+   voice only on explicit user action.
+2. **Voice-to-UI:** every concierge turn returns `ui_actions` (`HIGHLIGHT_ITEM`,
+   `ADD_TO_CART`, `OPEN_CHECKOUT`); the UI reacts (animation, haptics). Never
+   plain unstructured text.
+3. **Money is server-side only.** Clients send item ids and quantities, never a
+   price or an amount; the checkout request carries no amounts at all. Currency
+   is `XTR` via `createInvoiceLink` + `Telegram.WebApp.openInvoice`.
+4. **Auth is enforced.** `Authorization: tma <initData>` is validated (HMAC,
+   24 h). No bypass keyed on request data; `DEV_AUTH=1` is the only dev switch.
+5. Haptic feedback on all key user actions.
 
-## 1. Core Philosophy & Architectural Guardrails
+## Conventions
+- Go 1.26+, standard library first (`net/http` mux with method patterns); no
+  frameworks. Frontend: vanilla ES6+, Tailwind, Telegram WebApp SDK; no bundler.
+- Code and comments in English; user-facing strings may be Ukrainian.
+- `make check` (gofmt, vet, `go test -race`, `node --check`, build) must pass
+  before every commit. Test first for bug fixes.
+- No secrets in code or logs; env only: `TELEGRAM_BOT_TOKEN`, `PORT` (8085),
+  `DEV_AUTH`, `ENGINE_URL`, `WEB_DIR`. Never commit `.env*`. The repo is **public**:
+  do not describe open weaknesses in commits/issues before they are fixed.
+- `tmp/` is gitignored scratch; reusable helpers go to `minions/` (Bash, not Python).
+- Do not grow the stub (`internal/domain/engine.go`): it is throwaway once the
+  engine exists.
 
-1. **Dual-Mode (Zero-Cost Default):**
-   - **Text mode is the default.** Do not make speculative or background cloud STT/TTS API calls (ElevenLabs, Azure, Whisper) on simple catalog navigation or text queries.
-   - For audio feedback in text mode, prioritize client-side native Web Speech API (`SpeechSynthesis`) at $0 cost.
-   - Cloud Voice (STT/TTS) is **strictly On-Demand**, triggered only when the user explicitly enables voice or clicks Push-to-Talk.
+## Layout
+- `cmd/server/` — static files, `/v1` stub handlers (`api.go`), `ENGINE_URL` proxy
+- `internal/domain/` — catalog (`catalog/*.json`, embedded), `Quote` pricing, stub matcher
+- `internal/session/` — in-memory sessions bound to the principal
+- `internal/auth/` — initData validation · `internal/payments/` — Stars invoices
+- `web/` — the Mini App · `docs/` — `API.md`, `HANDOFF.md`, HLD, requirements, use cases
 
-2. **Voice-to-UI Synchronization Protocol (`ui_actions`):**
-   - The LLM and backend MUST NOT return plain unstructured text. Every intent response MUST contain a structured array of `ui_actions` (e.g. `HIGHLIGHT_ITEM`, `ADD_TO_CART`, `OPEN_CHECKOUT`).
-   - The UI MUST react visually to user speech (animating cards, updating the cart, scrolling, firing Haptic Feedback).
-
-3. **Telegram Platform Native Standards:**
-   - Always validate `Telegram.WebApp.initData` via HMAC-SHA256 (`auth/telegram.go`) before processing secure operations.
-   - Currency for digital items in Telegram Mini Apps MUST be **`XTR` (Telegram Stars)** using official Bot API `createInvoiceLink` / `Telegram.WebApp.openInvoice`.
-   - All cart/order calculations MUST be authoritative on the server side — the client sends only `item_id` and `quantity`.
-   - Keep tactile Haptic Feedback (`Telegram.WebApp.HapticFeedback`) on all key user actions.
-
----
-
-## 2. Code Conventions & Standards
-
-- **Language & Runtime:** Go 1.22+. Standard library first (`net/http`). Avoid bloated frameworks.
-- **Frontend Stack:** Pure HTML5, modern vanilla JavaScript (ES6+), TailwindCSS (dark mode), Telegram WebApp SDK. No heavy React/Angular bundle bloat — keep initial FCP under 1.2 seconds and bundle under 150 KB.
-- **Testing:** `go test ./...` must always pass. Keep domain rules and intent parsers covered by unit tests in `internal/domain/engine_test.go`.
-- **Environment & Secrets:**
-  - Never commit actual API keys or bot tokens. Use environment variables:
-    - `TELEGRAM_BOT_TOKEN`
-    - `PORT` (default: `8085`)
-- **Directory Layout:**
-  - `cmd/server/` — HTTP entrypoint and route handlers.
-  - `internal/domain/` — Multi-domain catalog, business rules, query processing, and UI action extraction.
-  - `internal/auth/` — Telegram `initData` HMAC-SHA256 validation.
-  - `internal/payments/` — Telegram Stars payments via Bot API.
-  - `web/` — Static Mini App frontend (`index.html`, `assets/app.js`).
-  - `docs/` — Formal specifications (`USECASES.md`, `REQUIREMENTS.md`, `ARCHITECTURE_HLD.md`).
-  - `tmp/` — Scratch scripts and temporary files (gitignored).
-
----
-
-## 3. Multi-Domain Catalog Reference
-
-The core ships with 4 pre-configured domains:
-- `pizzeria`: "Папа Пепе" (Neapolitan pizza, spicy recommendations, cart checkout).
-- `barbershop`: "Барбароса" (Grooming, beard trims, royal combos).
-- `auto`: "Подбай-Авто" (ECU diagnostics, oil service, brake inspections).
-- `lyapko`: "Lyapko Shop" (Health applicators, needle mats, rollers).
-
-When adding new domains, register them in `internal/domain/catalog.go` following the `DomainInfo` and `Item` structs.
-
----
-
-## 4. Verification Workflow
-
-Before concluding any task or pushing changes:
-```bash
-# 1. Format and vet code
-go fmt ./...
-go vet ./...
-
-# 2. Run unit tests
-go test -v ./...
-
-# 3. Build executable
-go build -o bin/server ./cmd/server
-
-# 4. Verify local server starts cleanly
-./bin/server &
-PID=$!
-sleep 1
-curl -s http://localhost:8085/api/domains | grep -q "pizzeria"
-kill $PID
-```
+## Verification
+`make check`, then `DEV_AUTH=1 PORT=8095 ./bin/server` and
+`curl localhost:8095/v1/topics` lists 4 topics.
