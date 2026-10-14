@@ -1,158 +1,192 @@
 package domain
 
 import (
+	"sort"
+	"strconv"
 	"strings"
+	"unicode"
 )
 
-// ParseQuery здійснює швидку екстракцію намірів та сутностей для миттєвої реакції UI.
-// При наявності зовнішнього LLM ключа запит делегується до моделі, інакше спрацьовує детермінований grounded matcher.
+// ProcessQuery is the deterministic stub of the engine's dialogue turn: it
+// matches catalog keywords and a few intents, and emits UI actions. The real
+// engine (v2v-demo) replaces it behind the same /v1 contract; nothing here
+// calls an LLM.
 func (r *Repository) ProcessQuery(domainID, text, lang string) ChatResponse {
 	d, ok := r.GetDomain(domainID)
 	if !ok {
-		d = r.domains["pizzeria"]
-		domainID = "pizzeria"
+		d, domainID = r.domains["pizzeria"], "pizzeria"
 	}
+	resp := ChatResponse{Language: lang, Signal: "continue", UIActions: []UIAction{}}
 
-	lower := strings.ToLower(strings.TrimSpace(text))
+	norm := normalize(text)
 
-	resp := ChatResponse{
-		Language:  lang,
-		DomainID:  domainID,
-		UIActions: make([]UIAction, 0),
-	}
-
-	// 1. Пошук збігів товарів/послуг у домені
-	var matchedItem *Item
-	for i := range d.Items {
-		item := &d.Items[i]
-		titleLower := strings.ToLower(item.Title)
-		idLower := strings.ToLower(item.ID)
-		if strings.Contains(lower, titleLower) ||
-			(strings.Contains(lower, "пепероні") && strings.Contains(idLower, "peperoni")) ||
-			(strings.Contains(lower, "маргарит") && strings.Contains(idLower, "margherita")) ||
-			(strings.Contains(lower, "чотири сири") && strings.Contains(idLower, "formaggi")) ||
-			(strings.Contains(lower, "кол") && strings.Contains(idLower, "cola")) ||
-			(strings.Contains(lower, "бород") && strings.Contains(idLower, "beard")) ||
-			(strings.Contains(lower, "стрижк") && strings.Contains(idLower, "haircut")) ||
-			(strings.Contains(lower, "діагностик") && strings.Contains(idLower, "diag")) ||
-			(strings.Contains(lower, "мастил") && strings.Contains(idLower, "oil")) ||
-			(strings.Contains(lower, "килимок") && strings.Contains(idLower, "mat")) ||
-			(strings.Contains(lower, "валик") && strings.Contains(idLower, "roller")) {
-			matchedItem = item
-			break
-		}
-	}
-
-	// 2. Розбір намірів: Додати в кошик / Замовити
-	isOrderIntent := strings.Contains(lower, "додай") ||
-		strings.Contains(lower, "замов") ||
-		strings.Contains(lower, "хочу") ||
-		strings.Contains(lower, "візьму") ||
-		strings.Contains(lower, "купити") ||
-		strings.Contains(lower, "add") ||
-		strings.Contains(lower, "order")
-
-	// Намір: Оформити / Оплатити
-	isCheckoutIntent := strings.Contains(lower, "оформити") ||
-		strings.Contains(lower, "оплат") ||
-		strings.Contains(lower, "чек") ||
-		strings.Contains(lower, "зірк") ||
-		strings.Contains(lower, "stars") ||
-		strings.Contains(lower, "checkout")
-
-	// Намір: Ціна / Інфо
-	isPriceQuery := strings.Contains(lower, "скільки коштує") ||
-		strings.Contains(lower, "ціна") ||
-		strings.Contains(lower, "вартість") ||
-		strings.Contains(lower, "price") ||
-		strings.Contains(lower, "how much")
-
-	if isCheckoutIntent {
+	if hasAny(norm, "оформити", "оплат", "чек", "зірк", "stars", "checkout") {
 		resp.Intent = "open_checkout"
-		resp.ReplyText = "Чудово! Відкриваю вікно замовлення для перевірки та швидкої оплати в Telegram Stars ⭐."
-		resp.UIActions = append(resp.UIActions, UIAction{
-			Type:    "OPEN_CHECKOUT",
-			Payload: map[string]interface{}{"domain": domainID},
-		})
+		resp.Reply = "Чудово! Відкриваю вікно замовлення для перевірки та швидкої оплати в Telegram Stars ⭐."
+		resp.UIActions = append(resp.UIActions, UIAction{Type: "OPEN_CHECKOUT", Payload: ActionPayload{Domain: domainID}})
 		return resp
 	}
 
-	if matchedItem != nil {
-		if isOrderIntent {
-			resp.Intent = "add_to_cart"
-			resp.ReplyText = "Чудовий вибір! Додав «" + matchedItem.Title + "» до вашого кошика. Бажаєте додати щось ще чи перейти до оплати?"
-			resp.UIActions = append(resp.UIActions, UIAction{
-				Type: "ADD_TO_CART",
-				Payload: map[string]interface{}{
-					"item_id":     matchedItem.ID,
-					"title":       matchedItem.Title,
-					"price_uah":   matchedItem.PriceUAH,
-					"price_stars": matchedItem.PriceStars,
-					"icon":        matchedItem.Icon,
-					"quantity":    1,
-				},
-			})
-			resp.UIActions = append(resp.UIActions, UIAction{
-				Type: "HIGHLIGHT_ITEM",
-				Payload: map[string]interface{}{
-					"item_id":     matchedItem.ID,
-					"duration_ms": 2500,
-				},
-			})
-		} else if isPriceQuery {
-			resp.Intent = "query_price"
-			resp.ReplyText = "Вартість «" + matchedItem.Title + "» становить " + string(rune(matchedItem.PriceUAH)) + " грн або " + string(rune(matchedItem.PriceStars)) + " ⭐ Stars. Додати до замовлення?"
-			resp.UIActions = append(resp.UIActions, UIAction{
-				Type: "HIGHLIGHT_ITEM",
-				Payload: map[string]interface{}{
-					"item_id":     matchedItem.ID,
-					"duration_ms": 3000,
-				},
-			})
-		} else {
-			resp.Intent = "recommendation"
-			resp.ReplyText = "Зверніть увагу на «" + matchedItem.Title + "» (" + matchedItem.Description + "). Підсвічую на екрані."
-			resp.UIActions = append(resp.UIActions, UIAction{
-				Type: "HIGHLIGHT_ITEM",
-				Payload: map[string]interface{}{
-					"item_id":     matchedItem.ID,
-					"duration_ms": 3000,
-				},
-			})
+	matches := matchItems(d.Items, norm)
+	if len(matches) == 0 {
+		resp.Intent = "general"
+		resp.Reply = "Я вас почув! Можу відповісти на запитання щодо нашого меню та послуг, підібрати позицію або одразу додати її в кошик. Що оберемо?"
+		return resp
+	}
+
+	isOrder := hasAny(norm, "додай", "запиш", "замов", "хочу", "візьму", "купити", "add", "order")
+	isPrice := hasAny(norm, "скільки коштує", "ціна", "вартість", "price", "how much")
+
+	switch {
+	case isOrder:
+		resp.Intent = "add_to_cart"
+		titles := make([]string, 0, len(matches))
+		for _, m := range matches {
+			titles = append(titles, "«"+m.item.Title+"»")
+			resp.UIActions = append(resp.UIActions, UIAction{Type: "ADD_TO_CART", Payload: ActionPayload{ItemID: m.item.ID, Quantity: m.qty}})
 		}
-		return resp
-	}
-
-	// 3. Якщо прямих товарних слів немає — перевіряємо загальні сценарії
-	if strings.Contains(lower, "гостр") {
-		// Рекомендація Пепероні
+		last := matches[len(matches)-1].item
+		resp.UIActions = append(resp.UIActions, UIAction{Type: "HIGHLIGHT_ITEM", Payload: ActionPayload{ItemID: last.ID, DurationMS: 2500}})
+		resp.Reply = "Чудовий вибір! Додав " + strings.Join(titles, " та ") + " до вашого кошика. Бажаєте додати щось ще чи перейти до оплати?"
+	case isPrice:
+		resp.Intent = "query_price"
+		parts := make([]string, 0, len(matches))
+		for _, m := range matches {
+			parts = append(parts, "«"+m.item.Title+"» — "+strconv.Itoa(m.item.PriceUAH)+" грн або "+strconv.Itoa(m.item.PriceStars)+" ⭐ Stars")
+		}
+		resp.Reply = "Вартість: " + strings.Join(parts, "; ") + ". Додати до замовлення?"
+		resp.UIActions = append(resp.UIActions, UIAction{Type: "HIGHLIGHT_ITEM", Payload: ActionPayload{ItemID: matches[0].item.ID, DurationMS: 3000}})
+	default:
 		resp.Intent = "recommendation"
-		resp.ReplyText = "Якщо полюбляєте гостре, однозначно рекомендую нашу фірмову піцу «Пепероні» з пікантною салямі. Підсвітив її в меню!"
-		resp.UIActions = append(resp.UIActions, UIAction{
-			Type: "HIGHLIGHT_ITEM",
-			Payload: map[string]interface{}{
-				"item_id":     "pizza_peperoni",
-				"duration_ms": 3500,
-			},
-		})
-		return resp
+		m := matches[0].item
+		resp.Reply = "Зверніть увагу на «" + m.Title + "» (" + m.Description + "). Підсвічую на екрані."
+		resp.UIActions = append(resp.UIActions, UIAction{Type: "HIGHLIGHT_ITEM", Payload: ActionPayload{ItemID: m.ID, DurationMS: 3000}})
 	}
-
-	if strings.Contains(lower, "спин") {
-		resp.Intent = "recommendation"
-		resp.ReplyText = "Для зняття болю та втоми в спині найкраще підходить килимок «Великий» 7.0 Ag. Він охоплює всю зону хребта. Підсвічую картку!"
-		resp.UIActions = append(resp.UIActions, UIAction{
-			Type: "HIGHLIGHT_ITEM",
-			Payload: map[string]interface{}{
-				"item_id":     "lyapko_mat_large",
-				"duration_ms": 3500,
-			},
-		})
-		return resp
-	}
-
-	// 4. Fallback / Guardrail
-	resp.Intent = "general"
-	resp.ReplyText = "Я вас почув! Можу відповісти на запитання щодо нашого меню та послуг, підібрати позицію або одразу додати її в кошик. Що оберемо?"
 	return resp
+}
+
+type itemMatch struct {
+	item Item
+	qty  int
+}
+
+type span struct {
+	item       Item
+	start, end int
+}
+
+// matchItems finds catalog items whose keywords (word prefixes, or phrases)
+// occur in norm. When two keywords overlap, the longer one wins ("стрижку
+// бороди" beats "стрижк"), so one phrase never matches two items. The quantity
+// is a digit or numeral word right before the keyword, default 1.
+func matchItems(items []Item, norm string) []itemMatch {
+	padded := []rune(" " + norm + " ")
+	var spans []span
+	for _, it := range items {
+		kws := append([]string{strings.ToLower(it.Title)}, it.Keywords...)
+		for _, kw := range kws {
+			needle := []rune(" " + strings.ToLower(kw))
+			if len(needle) < 3 {
+				continue
+			}
+			for i := 0; i+len(needle) <= len(padded); i++ {
+				if runesEqual(padded[i:i+len(needle)], needle) {
+					spans = append(spans, span{item: it, start: i + 1, end: i + len(needle)})
+				}
+			}
+		}
+	}
+	sort.SliceStable(spans, func(i, j int) bool { return spans[i].end-spans[i].start > spans[j].end-spans[j].start })
+
+	var accepted []span
+	for _, s := range spans {
+		overlap := false
+		for _, a := range accepted {
+			if s.start < a.end && a.start < s.end {
+				overlap = true
+				break
+			}
+		}
+		if !overlap {
+			accepted = append(accepted, s)
+		}
+	}
+	sort.Slice(accepted, func(i, j int) bool { return accepted[i].start < accepted[j].start })
+
+	var out []itemMatch
+	seen := map[string]int{}
+	for _, s := range accepted {
+		q := quantityBefore(padded, s.start)
+		if idx, ok := seen[s.item.ID]; ok {
+			out[idx].qty = min(out[idx].qty+q, MaxLineQty)
+			continue
+		}
+		seen[s.item.ID] = len(out)
+		out = append(out, itemMatch{item: s.item, qty: q})
+	}
+	return out
+}
+
+var numerals = map[string]int{
+	"один": 1, "одну": 1, "одна": 1, "одне": 1, "one": 1,
+	"два": 2, "дві": 2, "two": 2,
+	"три": 3, "three": 3,
+	"чотири": 4, "four": 4,
+	"п'ять": 5, "five": 5,
+}
+
+// quantityBefore reads the token directly before the rune offset at.
+func quantityBefore(padded []rune, at int) int {
+	end := at - 1 // padded[end] is the space before the keyword
+	if end <= 0 {
+		return 1
+	}
+	start := end
+	for start > 0 && padded[start-1] != ' ' {
+		start--
+	}
+	tok := string(padded[start:end])
+	if n, err := strconv.Atoi(tok); err == nil && n >= 1 {
+		return min(n, MaxLineQty)
+	}
+	if n, ok := numerals[tok]; ok {
+		return n
+	}
+	return 1
+}
+
+func runesEqual(a, b []rune) bool {
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// normalize lower-cases and replaces punctuation with spaces, unifying the two
+// apostrophe forms so "п'ять" and "пʼять" compare equal.
+func normalize(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r == 'ʼ' || r == '’':
+			b.WriteRune('\'')
+		case unicode.IsLetter(r) || unicode.IsDigit(r) || r == '\'':
+			b.WriteRune(r)
+		default:
+			b.WriteRune(' ')
+		}
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+func hasAny(s string, subs ...string) bool {
+	for _, sub := range subs {
+		if strings.Contains(s, sub) {
+			return true
+		}
+	}
+	return false
 }

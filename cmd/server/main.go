@@ -1,120 +1,101 @@
+// Command server serves the Mini App static files and the /v1 API. With
+// ENGINE_URL set it proxies /v1 to the real engine (v2v-demo); otherwise it
+// answers /v1 itself with a deterministic stub of the same contract.
 package main
 
 import (
-	"encoding/json"
-	"fmt"
+	"errors"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
+	"time"
 
-	"github.com/valpere/v2v-tma/internal/auth"
 	"github.com/valpere/v2v-tma/internal/domain"
 	"github.com/valpere/v2v-tma/internal/payments"
+	"github.com/valpere/v2v-tma/internal/session"
 )
 
-type Server struct {
-	repo         *domain.Repository
-	starsService *payments.StarsService
-	botToken     string
+type config struct {
+	Port      string
+	BotToken  string
+	DevAuth   bool   // DEV_AUTH=1: accept requests without initData (local development only)
+	EngineURL string // ENGINE_URL: proxy /v1 to the real engine
+	WebDir    string
+}
+
+func loadConfig() config {
+	c := config{
+		Port:      getenv("PORT", "8085"),
+		BotToken:  os.Getenv("TELEGRAM_BOT_TOKEN"),
+		DevAuth:   os.Getenv("DEV_AUTH") == "1",
+		EngineURL: os.Getenv("ENGINE_URL"),
+		WebDir:    getenv("WEB_DIR", "web"),
+	}
+	return c
+}
+
+func getenv(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
+
+func (c config) validate() error {
+	if c.EngineURL == "" && c.BotToken == "" && !c.DevAuth {
+		return errors.New("set TELEGRAM_BOT_TOKEN, or DEV_AUTH=1 for local development, or ENGINE_URL")
+	}
+	return nil
+}
+
+func newHandler(c config) (http.Handler, error) {
+	mux := http.NewServeMux()
+	if c.EngineURL != "" {
+		target, err := url.Parse(c.EngineURL)
+		if err != nil || target.Host == "" {
+			return nil, errors.New("ENGINE_URL must be an absolute URL")
+		}
+		mux.Handle("/v1/", &httputil.ReverseProxy{Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(target) // Authorization (the initData) is forwarded untouched
+		}})
+	} else {
+		a := &api{
+			repo:     domain.NewRepository(),
+			sessions: session.NewStore(),
+			stars:    payments.NewStarsService(c.BotToken),
+			botToken: c.BotToken,
+			devAuth:  c.DevAuth,
+			now:      time.Now,
+		}
+		a.routes(mux)
+	}
+	mux.Handle("/", http.FileServer(http.Dir(c.WebDir)))
+	return mux, nil
 }
 
 func main() {
-	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8085"
+	c := loadConfig()
+	if err := c.validate(); err != nil {
+		log.Fatal(err)
 	}
-
-	repo := domain.NewRepository()
-	starsService := payments.NewStarsService(botToken)
-
-	srv := &Server{
-		repo:         repo,
-		starsService: starsService,
-		botToken:     botToken,
-	}
-
-	mux := http.NewServeMux()
-
-	// API ендпоінти
-	mux.HandleFunc("GET /api/domains", srv.handleListDomains)
-	mux.HandleFunc("POST /api/chat", srv.handleChat)
-	mux.HandleFunc("POST /api/checkout/stars", srv.handleCheckoutStars)
-
-	// Статика TMA
-	fs := http.FileServer(http.Dir("web"))
-	mux.Handle("/", fs)
-
-	log.Printf("🚀 v2v-tma сервер запущено на http://localhost:%s", port)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
-		log.Fatalf("Server error: %v", err)
-	}
-}
-
-func (s *Server) handleListDomains(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	domains := s.repo.ListDomains()
-	json.NewEncoder(w).Encode(domains)
-}
-
-type ChatRequest struct {
-	DomainID string `json:"domain_id"`
-	Text     string `json:"text"`
-	Lang     string `json:"lang"`
-	InitData string `json:"init_data"`
-}
-
-func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	var req ChatRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
-		return
-	}
-
-	// Перевірка initData Telegram
-	if valid, err := auth.ValidateInitData(req.InitData, s.botToken); !valid || err != nil {
-		log.Printf("Warning: invalid initData: %v", err)
-	}
-
-	if req.Lang == "" {
-		req.Lang = "uk"
-	}
-
-	resp := s.repo.ProcessQuery(req.DomainID, req.Text, req.Lang)
-	json.NewEncoder(w).Encode(resp)
-}
-
-type CheckoutStarsRequest struct {
-	DomainID    string        `json:"domain_id"`
-	StarsAmount int           `json:"stars_amount"`
-	CartItems   []interface{} `json:"cart_items"`
-	InitData    string        `json:"init_data"`
-}
-
-func (s *Server) handleCheckoutStars(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	var req CheckoutStarsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
-		return
-	}
-
-	orderID := fmt.Sprintf("ord_%d", os.Getpid())
-	title := "Оплата замовлення"
-	description := fmt.Sprintf("Оплата кошика (%d ⭐ Stars)", req.StarsAmount)
-
-	invoiceLink, err := s.starsService.CreateStarsInvoice(title, description, orderID, req.StarsAmount)
+	h, err := newHandler(c)
 	if err != nil {
-		http.Error(w, "Failed to create stars invoice", http.StatusInternalServerError)
-		return
+		log.Fatal(err)
 	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":          true,
-		"invoice_url": invoiceLink,
-		"stars":       req.StarsAmount,
-	})
+	srv := &http.Server{
+		Addr:              ":" + c.Port,
+		Handler:           h,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	mode := "stub engine"
+	if c.EngineURL != "" {
+		mode = "proxy to " + c.EngineURL
+	}
+	log.Printf("v2v-tma listening on http://localhost:%s (%s, dev_auth=%t)", c.Port, mode, c.DevAuth)
+	log.Fatal(srv.ListenAndServe())
 }

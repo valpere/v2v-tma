@@ -1,0 +1,94 @@
+{
+  "order": 1,
+  "id": "pizzeria",
+  "name": "Піцерія «Папа Пепе»",
+  "tagline": "Справжня неаполітанська піца на дровах",
+  "icon": "🍕",
+  "welcome": "Вітаю в «Папа Пепе»! Що для вас приготувати? Можу порадити піцу з хрустким бортиком або зібрати сет для компанії.",
+  "voice_sample": "Привіт! Я голосовий консьєрж Папа Пепе. Чим можу допомогти?",
+  "quick_prompts": [
+    "Порадь гостру піцу",
+    "Додай Пепероні та Колу",
+    "Скільки коштує Маргарита?",
+    "Оформити доставку"
+  ],
+  "items": [
+    {
+      "item_id": "pizza_peperoni",
+      "title": "Піца Пепероні",
+      "description": "Пікантна салямі, моцарела fior di latte, томатний соус San Marzano, базилік",
+      "price_uah": 340,
+      "price_stars": 35,
+      "category": "Піца",
+      "icon": "🍕",
+      "badge": "Хіт продажу",
+      "keywords": [
+        "пепероні",
+        "гостр",
+        "pepperoni",
+        "spicy"
+      ]
+    },
+    {
+      "item_id": "pizza_margherita",
+      "title": "Піца Маргарита",
+      "description": "Класичний томатний соус, подвійна моцарела, оливкова олія першого віджиму",
+      "price_uah": 280,
+      "price_stars": 30,
+      "category": "Піца",
+      "icon": "🧀",
+      "keywords": [
+        "маргарит",
+        "margherita"
+      ]
+    },
+    {
+      "item_id": "pizza_quattro_formaggi",
+      "title": "Чотири Сири",
+      "description": "Моцарела, горгонзола, пармезан, рікота, трюфельний мед",
+      "price_uah": 390,
+      "price_stars": 40,
+      "category": "Піца",
+      "icon": "🧀",
+      "badge": "Преміум",
+      "keywords": [
+        "чотири сири",
+        "4 сири",
+        "чотирьох сирів",
+        "quattro",
+        "four cheese"
+      ]
+    },
+    {
+      "item_id": "drink_cola",
+      "title": "Coca-Cola 0.5л",
+      "description": "Охолоджений класичний напій у склі",
+      "price_uah": 60,
+      "price_stars": 6,
+      "category": "Напої",
+      "icon": "🥤",
+      "keywords": [
+        "кола",
+        "колу",
+        "колою",
+        "coca",
+        "cola"
+      ]
+    },
+    {
+      "item_id": "sauce_garlic",
+      "title": "Часниковий соус айолі",
+      "description": "Фірмовий домашній соус до бортиків",
+      "price_uah": 45,
+      "price_stars": 5,
+      "category": "Соуси",
+      "icon": "🧄",
+      "keywords": [
+        "часников",
+        "айолі",
+        "соус",
+        "garlic"
+      ]
+    }
+  ]
+}
