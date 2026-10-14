@@ -1,5 +1,7 @@
 # v2v-tma — High-Level Design (HLD) & Architecture
 
+> **Статус (2026-10-14): цільова архітектура.** v2v-tma — тонкий клієнт; «Go Backend» і «Domain Engine» на схемі нижче — це рушій у `v2v-demo` (`ENGINE_URL`). У цьому репозиторії зараз лише заглушка того ж контракту `/v1`; точний контракт — [`API.md`](API.md), статус і беклог — [`HANDOFF.md`](HANDOFF.md). Згадки `/api/*`, `reply_text`, `chi`, `telegram-bridge.js` тощо нижче — історичні.
+
 Документ описує системну архітектуру, взаємодію компонентів, моделі даних та протоколи обміну між Telegram Mini App, Go бекендом, мовними моделями та Telegram Bot API.
 
 ---
@@ -81,11 +83,11 @@
     - `lyapko`: аплікатори, валики, розміри, медичні рекомендації.
 - **LLM Grounding & Tool Calling:**
   - Запит до LLM формується із системним промптом, що містить поточну базу знань домену.
-  - Формат виводу: строго JSON Schema із полями `reply_text`, `intent`, `ui_actions`.
+  - Формат виводу: строго JSON Schema із полями `reply`, `intent`, `ui_actions`.
 
 ### 2.3. Платіжний модуль Telegram Stars
-- Метод `POST /api/checkout/stars`:
-  1. Клієнт передає поточний стан кошика (масив позицій та суму).
+- Метод `POST /v1/sessions/{id}/checkout`:
+  1. Клієнт не передає нічого: сервер бере власну копію кошика сесії та сам рахує суму.
   2. Сервер звертається до Telegram Bot API `createInvoiceLink`:
      - `title`: "Замовлення в Папа Пепе / Барбароса"
      - `description`: "Деталі замовлення: 2x Пепероні, 1x Кола"
@@ -109,12 +111,12 @@ sequenceDiagram
     participant TG as Telegram Bot API
 
     User->>TMA: Відкриває Mini App
-    TMA->>Srv: POST /api/auth (initData)
+    TMA->>Srv: GET /v1/topics, POST /v1/sessions (Authorization: tma initData)
     Srv-->>TMA: 200 OK (Валідний користувач + Каталог домену)
 
     User->>TMA: Натискає мікрофон / Каже: "Додай велику піцу Пепероні"
     TMA->>TMA: Web Audio малює звукову хвилю
-    TMA->>Srv: POST /api/chat (text/voice + active_domain)
+    TMA->>Srv: POST /v1/sessions/{id}/messages (text)
     Srv->>LLM: Prompt(KB + User Query + JSON Schema)
     LLM-->>Srv: JSON {reply_text, ui_actions: [add_to_cart(pizza_pep_large)]}
     Srv-->>TMA: JSON Response (+ аудіо якщо Voice Mode)
@@ -123,7 +125,7 @@ sequenceDiagram
     TMA->>User: Відтворює репліку асистента голосом / текстом
 
     User->>TMA: Натискає кнопку "Оплатити замовлення (50 ⭐)"
-    TMA->>Srv: POST /api/checkout (cart_items)
+    TMA->>Srv: POST /v1/sessions/{id}/checkout (без сум)
     Srv->>TG: createInvoiceLink(currency: "XTR", amount: 50)
     TG-->>Srv: invoice_url
     Srv-->>TMA: {invoice_url}
@@ -143,7 +145,7 @@ sequenceDiagram
 
 ```json
 {
-  "reply_text": "Чудовий вибір! Додав велику піцу Пепероні з подвійним сиром до вашого замовлення. Бажаєте напій чи соус?",
+  "reply": "Чудовий вибір! Додав велику піцу Пепероні з подвійним сиром до вашого замовлення. Бажаєте напій чи соус?",
   "language": "uk",
   "intent": "add_to_cart",
   "ui_actions": [
