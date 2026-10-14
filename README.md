@@ -33,3 +33,7 @@ make check                    # gofmt, vet, тести з -race, node --check, �
 | `PORT` (8085), `WEB_DIR` (`web`) | |
 
 Telegram відкриває Mini App лише по **HTTPS** — для перевірки всередині Telegram потрібні домен/тунель (див. HANDOFF §3).
+
+## Ліцензія
+
+Код — [MIT](LICENSE). Каталоги, тексти й назви брендів у `internal/domain/catalog/` (зокрема «Lyapko Shop») **не ліцензуються**: це демонстраційні приклади, права на торгові марки належать їхнім власникам.
