@@ -1,16 +1,18 @@
 # AGENTS.md — v2v-tma
 
 Telegram Mini App (TMA): the **frontend** of the v2v-demo voice/text concierge,
-with Voice-to-UI synchronisation and Telegram Stars (XTR) payments. **Live
-prototype, not an MVP** — read `docs/HANDOFF.md` first (status, what is stub,
-ordered backlog). The API between this client and the engine is `docs/API.md`.
+with Voice-to-UI synchronisation and Telegram Stars (XTR) payments. Read
+`docs/HANDOFF.md` first (status, ordered backlog). The API between this client and
+the engine is `docs/API.md`.
 
 ## Architecture in one paragraph
-This repo is a thin client. The engine (sessions, catalog, cart, LLM, STT/TTS,
-payment confirmation) belongs to `~/wrk/demo/v2v-demo/v2v-demo` and will be
-reached over `/v1` (`ENGINE_URL` makes `cmd/server` proxy to it). Until the
-engine exposes `/v1`, `cmd/server` answers it with a deterministic **stub**. Other
-frontends (plain web, the bot) are clients of the same API.
+This repo is a thin client: a small Go server embeds the Mini App (`web/`) and
+forwards `/v1/*` to the engine (`~/wrk/demo/v2v-demo/v2v-demo`, `WEB_ADDR`). The
+engine owns sessions, the grounded dialogue, catalog, cart, order amounts, Stars
+invoices and payment confirmation; it validates the Telegram `initData` itself
+(`TMA_BOT_TOKEN`), and the bot that hosts the Mini App (v2v-bot) relays the
+payment updates to it. This server holds **no secrets and no business logic**.
+Other frontends of the same engine: v2v-bot (Telegram), v2v-web (plain web).
 
 ## Guardrails
 1. **Text mode is the default and costs nothing.** No speculative cloud STT/TTS;
@@ -20,32 +22,34 @@ frontends (plain web, the bot) are clients of the same API.
    `ADD_TO_CART`, `OPEN_CHECKOUT`); the UI reacts (animation, haptics). Never
    plain unstructured text.
 3. **Money is server-side only.** Clients send item ids and quantities, never a
-   price or an amount; the checkout request carries no amounts at all. Currency
-   is `XTR` via `createInvoiceLink` + `Telegram.WebApp.openInvoice`.
-4. **Auth is enforced.** `Authorization: tma <initData>` is validated (HMAC,
-   24 h). No bypass keyed on request data; `DEV_AUTH=1` is the only dev switch.
-5. Haptic feedback on all key user actions.
+   price or an amount; the checkout request carries no amounts at all (`{}`).
+   Currency is `XTR`; the engine creates the invoice, the client only calls
+   `Telegram.WebApp.openInvoice(invoice_url)`.
+4. **Auth is the engine's.** `Authorization: tma <initData>` is forwarded
+   untouched; there is no bypass here. Local development uses the engine's
+   `WEB_DEV_AUTH=1` (loopback only). There are no cookies, so there is no CSRF
+   surface: the credential is an explicit header.
+5. Haptic feedback on all key user actions. Model output is rendered with
+   `textContent`, never `innerHTML`; catalog fields go through `esc()`.
 
 ## Conventions
-- Go 1.26+, standard library first (`net/http` mux with method patterns); no
-  frameworks. Frontend: vanilla ES6+, Tailwind, Telegram WebApp SDK; no bundler.
+- Go 1.26+, standard library only, no frameworks. Frontend: vanilla ES6+, Tailwind
+  (CDN — see HANDOFF debt), Telegram WebApp SDK; no bundler.
 - Code and comments in English; user-facing strings may be Ukrainian.
 - `make check` (gofmt, vet, `go test -race`, `node --check`, build) must pass
   before every commit. Test first for bug fixes.
-- No secrets in code or logs; env only: `TELEGRAM_BOT_TOKEN`, `PORT` (8085),
-  `DEV_AUTH`, `ENGINE_URL`, `WEB_DIR`. Never commit `.env*`. The repo is **public**:
-  do not describe open weaknesses in commits/issues before they are fixed.
+- No secrets in code or logs; env only: `ENGINE_URL` (required), `ADDR`
+  (127.0.0.1:8085), `WEB_DIR` (empty = embedded client). Never commit `.env*`. The
+  repo is **public**: do not describe open weaknesses in commits/issues before
+  they are fixed.
 - `tmp/` is gitignored scratch; reusable helpers go to `minions/` (Bash, not Python).
-- Do not grow the stub (`internal/domain/engine.go`): it is throwaway once the
-  engine exists.
+- Do not write to other repositories without explicit approval from Valentyn.
 
 ## Layout
-- `cmd/server/` — static files, `/v1` stub handlers (`api.go`), `ENGINE_URL` proxy
-- `internal/domain/` — catalog (`catalog/*.json`, embedded), `Quote` pricing, stub matcher
-- `internal/session/` — in-memory sessions bound to the principal
-- `internal/auth/` — initData validation · `internal/payments/` — Stars invoices
-- `web/` — the Mini App · `docs/` — `API.md`, `HANDOFF.md`, HLD, requirements, use cases
+- `cmd/server/` — wiring, graceful shutdown · `internal/server/` — static + `/v1` proxy
+- `web.go` — embeds `web/` (the Mini App) · `docs/` — `API.md`, `HANDOFF.md`, HLD, requirements, use cases
 
 ## Verification
-`make check`, then `DEV_AUTH=1 PORT=8095 ./bin/server` and
-`curl localhost:8095/v1/topics` lists 4 topics.
+`make check`; run the engine with `WEB_ADDR=127.0.0.1:8091 WEB_DEV_AUTH=1 CHECKOUT=mock`,
+then `make run` and `curl localhost:8085/v1/topics` (10 topics; the ones with a
+catalog: auto, barbershop, pizzeria, lyapko).
