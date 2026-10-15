@@ -38,7 +38,9 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	drained := make(chan struct{})
 	go func() {
+		defer close(drained)
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -47,5 +49,8 @@ func main() {
 	log.Printf("v2v-tma: listening on http://%s, engine %s", srv.Addr, cfg.EngineURL)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
+	}
+	if ctx.Err() != nil { // ListenAndServe returns at once on Shutdown; wait for the drain
+		<-drained
 	}
 }
