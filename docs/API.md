@@ -1,21 +1,18 @@
 # /v1 API contract
 
 The contract between any frontend (this Mini App, a plain web client, the bot)
-and the engine. **v2v-demo is the intended implementation** (see
-`docs/HANDOFF.md`); `cmd/server` ships a deterministic *stub* of the same
-contract so the prototype runs standalone. Change this file first, then both
-sides.
+and the engine. **v2v-demo implements it** (`docs/web-api.md` there records what it does and where it differs). Change this file first, then both sides.
 
 Auth: `Authorization: tma <Telegram.WebApp.initData>` on everything except
 `GET /v1/topics`. Invalid, forged or older-than-24h initData is `401`. A missing
-header is accepted only when the server runs with `DEV_AUTH=1`.
+header is accepted only when the engine runs with `WEB_DEV_AUTH=1` (loopback). A plain web frontend authenticates differently (a trusted frontend vouches for its visitors: engine `WEB_TRUSTED_KEY`); the endpoints are the same.
 Errors are `{"error": "<message>"}` with a 4xx/5xx status.
 
 | Method & path | Body | Response |
 |---|---|---|
 | `GET /v1/topics` | – | `[{id, order, name, tagline, icon, welcome, voice_sample, quick_prompts[], items[]}]` |
 | `POST /v1/sessions` | `{topic}` | `201 {session_id, topic, cart}` — one session per topic, cart isolated per session |
-| `POST /v1/sessions/{id}/messages` | `{text, lang}` (text 1..500 chars, lang `uk`\|`en`) | `{reply, signal, language, intent, ui_actions[], cart}` |
+| `POST /v1/sessions/{id}/messages` | `{text, lang}` (text 1..500 chars, lang `uk`\|`en`) | `{reply, signal, ui_actions[], cart}` — `429` past the engine's daily message cap per user |
 | `GET /v1/sessions/{id}/cart` | – | `cart` |
 | `PUT /v1/sessions/{id}/cart/items/{item_id}` | `{quantity}` (0 removes, max 20) | `cart` |
 | `DELETE /v1/sessions/{id}/cart` | – | `cart` |

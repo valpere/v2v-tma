@@ -116,7 +116,7 @@
     dom.domainIcon.textContent = d.icon;
     dom.domainTagline.textContent = d.tagline;
     dom.conciergeMessage.textContent = d.welcome;
-    dom.itemsCountBadge.textContent = `${d.items.length} позицій`;
+    dom.itemsCountBadge.textContent = d.items.length ? `${d.items.length} позицій` : 'лише розмова'; // topics without a catalog have nothing to order
 
     // Швидкі підказки
     dom.quickPrompts.innerHTML = '';
@@ -399,7 +399,7 @@
 
     try {
       // No amounts are sent: the server prices its own copy of the cart.
-      const data = await api('POST', `/v1/sessions/${state.sessionId}/checkout`);
+      const data = await api('POST', `/v1/sessions/${state.sessionId}/checkout`, {});
       resetBtn();
 
       if (!data.mock && tg?.openInvoice) {
