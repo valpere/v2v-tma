@@ -240,17 +240,22 @@ import * as recorder from "./recorder.mjs";
   // 7. Відправка запитів до AI-Консьєржа
   async function sendQuery(text) {
     if (!text || !text.trim()) return;
+    if (!state.sessionId) {
+      dom.conciergeMessage.textContent = 'Сесія ще не почалась. Оберіть тему ще раз або спробуйте пізніше.';
+      return;
+    }
+    const sid = state.sessionId;
 
     dom.conciergeMessage.textContent = 'Обмірковую відповідь...';
     animateWave(true);
 
     try {
-      const data = await api.json('POST', `/v1/sessions/${state.sessionId}/messages`, { text, lang: LANG });
+      const data = await api.json('POST', `/v1/sessions/${sid}/messages`, { text, lang: LANG });
       animateWave(false);
-      showReply(data);
+      if (sid === state.sessionId) showReply(data); // else: the topic changed meanwhile
     } catch (err) {
       animateWave(false);
-      dom.conciergeMessage.textContent = 'Перепрошую, сталася помилка зʼєднання. Спробуйте ще раз.';
+      if (sid === state.sessionId) dom.conciergeMessage.textContent = 'Перепрошую, сталася помилка зʼєднання. Спробуйте ще раз.';
     }
   }
 
@@ -328,36 +333,60 @@ import * as recorder from "./recorder.mjs";
     animateWave(on);
   }
 
+  let voiceBusy = false; // opening the mic, recording or uploading: one voice turn at a time
+
   async function toggleMic() {
     if (recording) { recording.stop(); return; }
     if (!recorder.recorderSupported()) { listenWithBrowser(); return; }
-    if (!state.sessionId) return;
+    if (!state.sessionId || voiceBusy) return;
+    voiceBusy = true;
+    const sid = state.sessionId;
     try {
       recording = await recorder.start();
-    } catch {
-      notify('Немає доступу до мікрофона. Дозвольте його або пишіть текстом.');
+    } catch (err) {
+      voiceBusy = false;
+      notify(err.name === 'NotAllowedError' ? 'Немає доступу до мікрофона. Дозвольте його або пишіть текстом.' : 'Запис недоступний: ' + err.message);
       return;
     }
     triggerHaptic('medium');
     setMicBusy(true);
     dom.conciergeMessage.textContent = 'Слухаю вас... Натисніть ще раз, щоб надіслати';
-    const { blob, seconds } = await recording.done;
+    let rec;
+    try {
+      rec = await recording.done;
+    } catch (err) {
+      recording = null; voiceBusy = false; setMicBusy(false);
+      dom.conciergeMessage.textContent = 'Запис перервано: ' + err.message;
+      return;
+    }
     recording = null;
     dom.conciergeMessage.textContent = 'Розпізнаю...';
     try {
-      const data = await api.voice(state.sessionId, blob, seconds);
-      setMicBusy(false);
+      const data = await api.voice(sid, rec.blob, rec.seconds);
+      if (sid !== state.sessionId) return; // the topic changed meanwhile: that answer is for another conversation
       showReply(data, data.transcript);
     } catch (err) {
+      if (sid === state.sessionId) dom.conciergeMessage.textContent = 'Не вдалося обробити голос: ' + err.message;
+    } finally {
+      voiceBusy = false;
       setMicBusy(false);
-      dom.conciergeMessage.textContent = 'Не вдалося обробити голос: ' + err.message;
     }
   }
 
+  let playing = null;
+
   function playAudio(b64, type) {
-    const url = URL.createObjectURL(new Blob([b64ToBytes(b64)], { type }));
+    if (playing) playing(); // never two clips on top of each other
+    const url = URL.createObjectURL(new Blob([b64ToBytes(b64)], { type: type || 'audio/ogg' }));
     const a = new Audio(url);
-    const free = () => { URL.revokeObjectURL(url); animateWave(false); };
+    const free = () => {
+      if (playing !== free) return;
+      playing = null;
+      a.pause();
+      URL.revokeObjectURL(url);
+      animateWave(false);
+    };
+    playing = free;
     a.onended = a.onerror = free;
     animateWave(true);
     a.play().catch(free); // the webview may refuse autoplay; the text is already shown

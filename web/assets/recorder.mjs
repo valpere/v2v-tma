@@ -11,11 +11,22 @@ export function recorderSupported() {
 // handle.done resolves {blob, seconds} after handle.stop() or MAX_SECONDS.
 export async function start() {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  const mr = new MediaRecorder(stream);
+  let mr;
+  try {
+    mr = new MediaRecorder(stream);
+  } catch (err) {
+    stream.getTracks().forEach((t) => t.stop()); // do not leave the mic open
+    throw err;
+  }
   const chunks = [];
   const t0 = Date.now();
   let timer;
-  const done = new Promise((resolve) => {
+  const done = new Promise((resolve, reject) => {
+    mr.onerror = (e) => {
+      clearTimeout(timer);
+      stream.getTracks().forEach((t) => t.stop());
+      reject(e.error || new Error('recorder error'));
+    };
     mr.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     mr.onstop = () => {
       clearTimeout(timer);
