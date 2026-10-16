@@ -31,12 +31,9 @@ The bot that hosts the Mini App must be the one whose token is the engine's
    @BotFather → the bot's Mini App URL. Engine env on the server: `WEB_ADDR`,
    `TMA_BOT_TOKEN`, `CHECKOUT=stars`, and the live bot's token must equal it.
 2. **First real Stars payment** (small amount), then refund to verify the whole loop.
-3. **Voice**: client does Web Speech (free). Cloud voice = `POST .../voice` +
-   `GET /v1/tts` on the engine (not built), on demand only.
-4. **Frontend debt**: Tailwind Play CDN (runtime JIT; violates the size/time targets)
-   → precompiled CSS; quick prompts Ukrainian only; `lang` hard-coded `uk`; no i18n;
-   `app.js` is one 400-line IIFE; use `themeParams` / `MainButton`.
-5. **Tests for the client** (none besides `node --check`).
+3. **Voice — done, not yet verified inside Telegram.** The mic records (MediaRecorder) and posts the raw audio to the engine's `POST /v1/sessions/{id}/voice`; "Голос On" plays the engine's spoken reply (`audio_b64`), falling back to browser SpeechSynthesis. Without MediaRecorder it falls back to Web Speech. Headless-chromium check with a fake mic passed; the Telegram webview (mic permission, autoplay) is untested.
+4. **Frontend debt, what is left**: quick prompts come from the engine (Ukrainian only); no i18n of the UI strings; `themeParams` / `MainButton` unused (the theme is fixed dark). Done: Tailwind CDN → committed `web/assets/tailwind.css` (`make css` to regenerate after changing classes), `lang` from the Telegram user, `app.js` split into ES modules (`core.mjs` pure helpers, `recorder.mjs`, `app.mjs`).
+5. **Client tests**: `web/test/*.test.mjs` (`node --test`) cover `core.mjs`. The DOM wiring in `app.mjs` has no tests.
 
 ## Rules for the next agent
 - `make check` must pass before every commit; the repo is **public** — no tokens, no

@@ -22,7 +22,7 @@ Telegram-бот ─┐
 
 ```bash
 make run                      # потрібен рушій із WEB_ADDR; http://localhost:8085
-make check                    # gofmt, vet, тести з -race, node --check, збірка
+make check                    # gofmt, vet, тести з -race, node --check + node --test (web/test), збірка
 ```
 
 | Змінна | Призначення |

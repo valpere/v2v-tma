@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* no tap flash, no text selection on taps */
+* {
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.wave-bar {
+  transition: height 0.08s ease-in-out;
+}
+@keyframes pulse-ring {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.15); opacity: 0.3; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+.pulse-record {
+  animation: pulse-ring 1.5s infinite ease-in-out;
+}

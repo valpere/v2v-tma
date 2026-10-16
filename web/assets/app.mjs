@@ -1,9 +1,10 @@
 /**
- * v2v-tma — Client Application Engine
- * Handles Telegram WebApp SDK, Voice/Text Dual Mode, UI Action Mutations, Cart & Stars Payments
+ * v2v-tma client: Telegram WebApp SDK, text/voice, server-owned cart, Stars checkout.
+ * Pure helpers live in core.mjs (unit-tested), microphone capture in recorder.mjs.
  */
+import { esc, qtyOf as qtyIn, plural, langOf, makeApi, b64ToBytes } from "./core.mjs";
+import * as recorder from "./recorder.mjs";
 
-(function () {
   // 1. Ініціалізація Telegram WebApp
   const tg = window.Telegram?.WebApp;
   if (tg) {
@@ -66,19 +67,9 @@
     }
   }
 
-  // API helper: every call carries the Telegram initData; the server enforces it.
-  async function api(method, path, body) {
-    const headers = { 'Content-Type': 'application/json' };
-    if (tg?.initData) headers['Authorization'] = 'tma ' + tg.initData;
-    const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
-    return data;
-  }
-
-  function esc(s) {
-    return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  }
+  // every call carries the Telegram initData; the server enforces it
+  const api = makeApi(window.fetch.bind(window), tg?.initData || "");
+  const LANG = langOf(tg?.initDataUnsafe?.user?.language_code);
 
   function notify(msg) {
     if (tg?.showAlert) tg.showAlert(msg); else alert(msg);
@@ -87,7 +78,7 @@
   // 5. Завантаження доменів та каталогу
   async function loadDomains() {
     try {
-      const data = await api('GET', '/v1/topics');
+      const data = await api.json('GET', '/v1/topics');
       data.forEach(d => state.domains[d.id] = d);
       dom.domainSelect.innerHTML = data.map(d => `<option value="${esc(d.id)}" class="bg-slate-900 text-white">${esc(d.name)}</option>`).join('');
       if (!state.domains[state.domainId] && data.length) state.domainId = data[0].id;
@@ -107,7 +98,7 @@
     state.cart = { items: [], count: 0, total_uah: 0, total_stars: 0 };
     updateCartUI();
     try {
-      const s = await api('POST', '/v1/sessions', { topic: domainId });
+      const s = await api.json('POST', '/v1/sessions', { topic: domainId });
       state.sessionId = s.session_id;
     } catch (err) {
       dom.conciergeMessage.textContent = 'Не вдалося почати сесію: ' + err.message;
@@ -116,7 +107,7 @@
     dom.domainIcon.textContent = d.icon;
     dom.domainTagline.textContent = d.tagline;
     dom.conciergeMessage.textContent = d.welcome;
-    dom.itemsCountBadge.textContent = (d.items || []).length ? `${d.items.length} позицій` : 'лише розмова'; // topics without a catalog have nothing to order
+    dom.itemsCountBadge.textContent = (d.items || []).length ? `${d.items.length} ${plural(d.items.length, 'позиція', 'позиції', 'позицій')}` : 'лише розмова'; // topics without a catalog have nothing to order
 
     // Швидкі підказки
     dom.quickPrompts.innerHTML = '';
@@ -170,15 +161,13 @@
     });
   }
 
-  function qtyOf(itemId) {
-    return state.cart.items.find(c => c.item_id === itemId)?.quantity || 0;
-  }
+  const qtyOf = itemId => qtyIn(state.cart, itemId);
 
   // The server owns the cart: every change is a PUT and the response is the new truth.
   async function setQty(itemId, quantity) {
     if (!state.sessionId) return;
     try {
-      state.cart = await api('PUT', `/v1/sessions/${state.sessionId}/cart/items/${encodeURIComponent(itemId)}`, { quantity });
+      state.cart = await api.json('PUT', `/v1/sessions/${state.sessionId}/cart/items/${encodeURIComponent(itemId)}`, { quantity });
       updateCartUI();
     } catch (err) {
       notify('Не вдалося змінити кошик: ' + err.message);
@@ -194,7 +183,7 @@
     if (totalCount > 0) {
       dom.cartBar.classList.remove('hidden');
       dom.cartBar.classList.add('flex');
-      dom.cartSummaryText.textContent = `${totalCount} ${totalCount === 1 ? 'позиція' : 'позицій'}`;
+      dom.cartSummaryText.textContent = `${totalCount} ${plural(totalCount, 'позиція', 'позиції', 'позицій')}`;
       dom.cartSubtotalText.textContent = `${totalUAH} грн • ${totalStars} ⭐ Stars`;
       dom.checkoutStarsBadge.textContent = `${totalStars} ⭐`;
     } else {
@@ -236,6 +225,18 @@
     });
   }
 
+  // A reply, from text or voice: the cart is the server's copy, ui_actions only animate.
+  function showReply(data, heard) {
+    dom.conciergeMessage.textContent = (heard ? `🎤 «${heard}»\n\n` : '') + data.reply;
+    if (state.voiceMode) {
+      if (data.audio_b64) playAudio(data.audio_b64, data.audio_type); // the engine's voice
+      else if (window.speechSynthesis) speakText(data.reply); // free browser fallback
+    }
+    state.cart = data.cart;
+    updateCartUI();
+    applyUIActions(data.ui_actions || []);
+  }
+
   // 7. Відправка запитів до AI-Консьєржа
   async function sendQuery(text) {
     if (!text || !text.trim()) return;
@@ -244,22 +245,9 @@
     animateWave(true);
 
     try {
-      const data = await api('POST', `/v1/sessions/${state.sessionId}/messages`, { text, lang: 'uk' });
+      const data = await api.json('POST', `/v1/sessions/${state.sessionId}/messages`, { text, lang: LANG });
       animateWave(false);
-
-      // Виведення репліки
-      dom.conciergeMessage.textContent = data.reply;
-
-      // Якщо активний голосовий режим — озвучуємо нативним браузерним SpeechSynthesis (Zero-Cost)
-      if (state.voiceMode && window.speechSynthesis) {
-        speakText(data.reply);
-      }
-
-      // Кошик — авторитетна копія із сервера; ui_actions лише анімують
-      state.cart = data.cart;
-      updateCartUI();
-      applyUIActions(data.ui_actions || []);
-
+      showReply(data);
     } catch (err) {
       animateWave(false);
       dom.conciergeMessage.textContent = 'Перепрошую, сталася помилка зʼєднання. Спробуйте ще раз.';
@@ -329,8 +317,53 @@
     }
   }
 
-  // 11. Голосове розпізнавання (Push-to-Talk)
-  function toggleSpeechRecognition() {
+  // 11. Голос. Основний шлях: запис мікрофона -> STT рушія (працює у вебв'ю Telegram,
+  // де Web Speech часто немає). Без MediaRecorder -- запасний браузерний розпізнавач.
+  let recording = null;
+
+  function setMicBusy(on) {
+    dom.micBtn.classList.toggle('pulse-record', on);
+    dom.micBtn.classList.toggle('bg-rose-600', on);
+    dom.micBtn.classList.toggle('bg-purple-600', !on);
+    animateWave(on);
+  }
+
+  async function toggleMic() {
+    if (recording) { recording.stop(); return; }
+    if (!recorder.recorderSupported()) { listenWithBrowser(); return; }
+    if (!state.sessionId) return;
+    try {
+      recording = await recorder.start();
+    } catch {
+      notify('Немає доступу до мікрофона. Дозвольте його або пишіть текстом.');
+      return;
+    }
+    triggerHaptic('medium');
+    setMicBusy(true);
+    dom.conciergeMessage.textContent = 'Слухаю вас... Натисніть ще раз, щоб надіслати';
+    const { blob, seconds } = await recording.done;
+    recording = null;
+    dom.conciergeMessage.textContent = 'Розпізнаю...';
+    try {
+      const data = await api.voice(state.sessionId, blob, seconds);
+      setMicBusy(false);
+      showReply(data, data.transcript);
+    } catch (err) {
+      setMicBusy(false);
+      dom.conciergeMessage.textContent = 'Не вдалося обробити голос: ' + err.message;
+    }
+  }
+
+  function playAudio(b64, type) {
+    const url = URL.createObjectURL(new Blob([b64ToBytes(b64)], { type }));
+    const a = new Audio(url);
+    const free = () => { URL.revokeObjectURL(url); animateWave(false); };
+    a.onended = a.onerror = free;
+    animateWave(true);
+    a.play().catch(free); // the webview may refuse autoplay; the text is already shown
+  }
+
+  function listenWithBrowser() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert('Голосове розпізнавання не підтримується цим браузером. Використовуйте текстовий ввід.');
@@ -378,7 +411,7 @@
   // 12. Оплата через Telegram Stars
   async function clearCart() {
     try {
-      state.cart = await api('DELETE', `/v1/sessions/${state.sessionId}/cart`);
+      state.cart = await api.json('DELETE', `/v1/sessions/${state.sessionId}/cart`);
     } catch (err) {
       console.warn('clear cart failed:', err);
     }
@@ -399,7 +432,7 @@
 
     try {
       // No amounts are sent: the server prices its own copy of the cart.
-      const data = await api('POST', `/v1/sessions/${state.sessionId}/checkout`, {});
+      const data = await api.json('POST', `/v1/sessions/${state.sessionId}/checkout`, {});
       resetBtn();
 
       if (!data.mock && tg?.openInvoice) {
@@ -460,9 +493,7 @@
     }
   };
 
-  dom.micBtn.onclick = () => {
-    toggleSpeechRecognition();
-  };
+  dom.micBtn.onclick = toggleMic;
 
   dom.checkoutBtn.onclick = () => {
     triggerHaptic('medium');
@@ -479,4 +510,3 @@
 
   // Початковий старт
   loadDomains();
-})();
