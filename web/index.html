@@ -6,46 +6,7 @@
   <title>v2v-tma — Voice & Text AI Concierge</title>
   <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            tma: {
-              bg: '#0f172a',
-              card: '#1e293b',
-              border: '#334155',
-              accent: '#8b5cf6',
-              accentHover: '#7c3aed',
-              stars: '#fbbf24',
-            }
-          }
-        }
-      }
-    }
-  </script>
-  <style>
-    /* Плавний скролінг та заборона виділення при тапах */
-    * {
-      -webkit-tap-highlight-color: transparent;
-      user-select: none;
-    }
-    /* Анімація звукової хвилі */
-    .wave-bar {
-      transition: height 0.08s ease-in-out;
-    }
-    @keyframes pulse-ring {
-      0% { transform: scale(0.95); opacity: 0.8; }
-      50% { transform: scale(1.15); opacity: 0.3; }
-      100% { transform: scale(0.95); opacity: 0.8; }
-    }
-    .pulse-record {
-      animation: pulse-ring 1.5s infinite ease-in-out;
-    }
-  </style>
+  <link rel="stylesheet" href="/assets/tailwind.css">
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-purple-500 selection:text-white pb-28">
 
@@ -203,6 +164,6 @@
     </div>
   </div>
 
-  <script src="/assets/app.js"></script>
+  <script type="module" src="/assets/app.mjs"></script>
 </body>
 </html>

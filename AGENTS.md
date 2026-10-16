@@ -53,3 +53,4 @@ Other frontends of the same engine: v2v-bot (Telegram), v2v-web (plain web).
 `make check`; run the engine with `WEB_ADDR=127.0.0.1:8091 WEB_DEV_AUTH=1 CHECKOUT=mock`,
 then `make run` and `curl localhost:8085/v1/topics` (10 topics; the ones with a
 catalog: auto, barbershop, pizzeria, lyapko).
+- Client assets: `web/assets/tailwind.css` is generated and committed — after changing Tailwind classes run `make css` (needs npx + network) and commit the result; `make check` does not regenerate it.
