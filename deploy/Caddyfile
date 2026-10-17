@@ -1,0 +1,6 @@
+# /etc/caddy/Caddyfile — TLS terminates here (Let's Encrypt, automatic); v2v-tma
+# listens on loopback only and proxies /v1 to the engine.
+app.pere.org.ua {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8085
+}
