@@ -373,14 +373,14 @@ import * as recorder from "./recorder.mjs";
       if (waveInterval) clearInterval(waveInterval);
       waveInterval = setInterval(() => {
         dom.waveBars.forEach(bar => {
-          const h = Math.floor(Math.random() * 20) + 4;
+          const h = Math.floor(Math.random() * 11) + 3;
           bar.style.height = `${h}px`;
         });
       }, 90);
     } else {
       if (waveInterval) clearInterval(waveInterval);
       dom.waveBars.forEach((bar, idx) => {
-        bar.style.height = `${[6, 8, 12, 6, 10, 8, 5][idx % 7]}px`;
+        bar.style.height = `${[4, 6, 8, 4, 6, 4, 3][idx % 7]}px`;
       });
     }
   }
