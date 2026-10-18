@@ -47,9 +47,7 @@
           </div>
           <div id="domain-name" class="text-sm font-bold text-white mt-1 leading-snug"></div>
           <div id="domain-tagline" class="text-[11px] text-slate-400 leading-snug"></div>
-          <p id="concierge-message" class="text-sm text-slate-200 mt-2 leading-relaxed">
-            Вітаю! Чим можу допомогти? Запитайте голосом або оберіть підказку нижче.
-          </p>
+          <p id="concierge-message" class="text-[11px] text-purple-300 mt-1.5 min-h-[14px]"></p>
         </div>
       </div>
 
@@ -65,6 +63,9 @@
       </div>
     </div>
 
+    <!-- ІСТОРІЯ ЧАТУ -->
+    <div id="chat-log" role="log" aria-live="polite" class="space-y-2 max-h-[45vh] overflow-y-auto pr-0.5"></div>
+
     <!-- ШВИДКІ ПІДКАЗКИ (Quick Prompts) -->
     <div class="space-y-1.5">
       <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider px-1">Швидкі запити:</div>
@@ -74,7 +75,7 @@
     </div>
 
     <!-- КАТАЛОГ ПОЗИЦІЙ / МЕНЮ ДОМЕНУ -->
-    <div class="space-y-2.5">
+    <div id="catalog-section" class="space-y-2.5">
       <div class="flex items-center justify-between px-1">
         <div class="text-xs font-bold uppercase tracking-wider text-slate-300">Каталог та послуги</div>
         <span id="items-count-badge" class="text-[11px] text-slate-500">5 позицій</span>
