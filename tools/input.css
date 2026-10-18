@@ -18,3 +18,12 @@
 .pulse-record {
   animation: pulse-ring 1.5s infinite ease-in-out;
 }
+
+/* native controls (the topic <select> and its popup) follow the dark theme in webviews */
+html {
+  color-scheme: dark;
+}
+select, select option {
+  background-color: #0f172a;
+  color: #f1f5f9;
+}
