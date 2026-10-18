@@ -413,7 +413,7 @@ import * as recorder from "./recorder.mjs";
     }
     triggerHaptic('medium');
     setMicBusy(true);
-    setStatus('Слухаю вас… натисніть ще раз, щоб надіслати');
+    setStatus('Слухаю…');
     let rec;
     try {
       rec = await recording.done;
@@ -477,7 +477,7 @@ import * as recorder from "./recorder.mjs";
         triggerHaptic('medium');
         dom.micBtn.classList.add('pulse-record', 'bg-rose-600');
         dom.micBtn.classList.remove('bg-purple-600');
-        setStatus('Слухаю вас… говоріть');
+        setStatus('Слухаю…');
         animateWave(true);
       };
 
