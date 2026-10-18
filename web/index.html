@@ -12,20 +12,13 @@
 
   <!-- ВЕРХНЯ ШАПКА: Селектор домену та перемикач режимів -->
   <header id="top-bar" class="hidden sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 py-3">
-    <!-- рядок 1: назад до тем + озвучка; рядок 2: що це за тема (повна назва та опис, без обрізання) -->
+    <!-- лише навігація й озвучка; назва, опис та іконка теми -- у картці AI Concierge -->
     <div class="flex items-center justify-between gap-2">
       <button id="topic-btn" type="button" class="text-xs font-semibold text-purple-300 border border-purple-500/40 rounded-full px-3 py-1 hover:text-white active:scale-95 transition">← Теми</button>
       <div class="flex items-center bg-slate-800/80 px-2.5 py-1.5 rounded-full border border-slate-700/60 shrink-0">
         <button id="voice-mode-toggle" type="button" title="Озвучувати відповіді голосом" class="text-[11px] font-semibold text-slate-300 hover:text-white transition">
           <span id="voice-mode-label" class="text-slate-400">🔇 Без озвучки</span>
         </button>
-      </div>
-    </div>
-    <div class="flex items-start gap-2.5 mt-2.5">
-      <span id="domain-icon" class="text-2xl leading-none"></span>
-      <div class="min-w-0">
-        <div id="domain-name" class="font-bold text-sm text-white leading-snug"></div>
-        <div id="domain-tagline" class="text-[11px] text-slate-400 leading-snug"></div>
       </div>
     </div>
   </header>
@@ -45,14 +38,16 @@
     <div class="bg-gradient-to-br from-slate-900 to-slate-900/80 rounded-2xl border border-purple-900/30 p-3.5 shadow-xl relative overflow-hidden">
       <div class="flex items-start gap-3">
         <div class="w-10 h-10 rounded-xl bg-purple-600/20 border border-purple-500/40 flex items-center justify-center text-xl shrink-0">
-          🤖
+          <span id="domain-icon"></span>
         </div>
         <div class="flex-1 min-w-0">
           <div class="flex items-center justify-between">
             <span class="text-xs font-bold uppercase tracking-wider text-purple-400">AI Concierge</span>
             <span id="status-badge" class="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">Online</span>
           </div>
-          <p id="concierge-message" class="text-sm text-slate-200 mt-1 leading-relaxed">
+          <div id="domain-name" class="text-sm font-bold text-white mt-1 leading-snug"></div>
+          <div id="domain-tagline" class="text-[11px] text-slate-400 leading-snug"></div>
+          <p id="concierge-message" class="text-sm text-slate-200 mt-2 leading-relaxed">
             Вітаю! Чим можу допомогти? Запитайте голосом або оберіть підказку нижче.
           </p>
         </div>
