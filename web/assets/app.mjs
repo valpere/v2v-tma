@@ -21,7 +21,7 @@ import * as recorder from "./recorder.mjs";
     domains: {},
     sessionId: null,
     cart: { items: [], count: 0, total_uah: 0, total_stars: 0 }, // authoritative copy from the server
-    voiceMode: false, // false = Текст (Zero-Cost), true = Голос On-Demand
+    voiceMode: false, // spoken replies: false = text only (free), true = the engine's voice; the mic needs no toggle
     isRecording: false,
     mediaRecorder: null,
     audioChunks: []
@@ -36,6 +36,7 @@ import * as recorder from "./recorder.mjs";
     pickerStatus: document.getElementById('topic-picker-status'),
     view: document.getElementById('concierge-view'),
     bottomBar: document.getElementById('bottom-bar'),
+    topBar: document.getElementById('top-bar'),
     domainIcon: document.getElementById('domain-icon'),
     domainTagline: document.getElementById('domain-tagline'),
     conciergeMessage: document.getElementById('concierge-message'),
@@ -115,6 +116,7 @@ import * as recorder from "./recorder.mjs";
     state.sessionId = null; // replies still in flight belong to the topic being left
     dom.picker.classList.remove('hidden');
     dom.view.classList.add('hidden');
+    dom.topBar.classList.add('hidden');
     dom.bottomBar.classList.add('hidden');
     window.scrollTo(0, 0);
   }
@@ -136,6 +138,7 @@ import * as recorder from "./recorder.mjs";
     dom.domainName.textContent = d.name;
     dom.picker.classList.add('hidden');
     dom.view.classList.remove('hidden');
+    dom.topBar.classList.remove('hidden');
     dom.bottomBar.classList.remove('hidden');
     window.scrollTo(0, 0);
     dom.domainIcon.textContent = d.icon;
@@ -538,7 +541,7 @@ import * as recorder from "./recorder.mjs";
   dom.voiceToggle.onclick = () => {
     triggerHaptic('light');
     state.voiceMode = !state.voiceMode;
-    dom.voiceLabel.textContent = state.voiceMode ? 'Голос On' : 'Текст';
+    dom.voiceLabel.textContent = state.voiceMode ? '🔊 З озвучкою' : '🔇 Без озвучки';
     dom.voiceLabel.className = state.voiceMode ? 'text-purple-400 font-bold' : 'text-slate-400';
   };
 
