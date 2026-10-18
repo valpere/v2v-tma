@@ -17,7 +17,7 @@ import * as recorder from "./recorder.mjs";
 
   // 2. Стан додатку
   const state = {
-    domainId: 'pizzeria',
+    domainId: null, // nothing is chosen until the user picks a topic
     domains: {},
     sessionId: null,
     cart: { items: [], count: 0, total_uah: 0, total_stars: 0 }, // authoritative copy from the server
@@ -29,7 +29,13 @@ import * as recorder from "./recorder.mjs";
 
   // 3. Елементи DOM
   const dom = {
-    domainSelect: document.getElementById('domain-select'),
+    topicBtn: document.getElementById('topic-btn'),
+    domainName: document.getElementById('domain-name'),
+    picker: document.getElementById('topic-picker'),
+    pickerGrid: document.getElementById('topic-grid'),
+    pickerStatus: document.getElementById('topic-picker-status'),
+    view: document.getElementById('concierge-view'),
+    bottomBar: document.getElementById('bottom-bar'),
     domainIcon: document.getElementById('domain-icon'),
     domainTagline: document.getElementById('domain-tagline'),
     conciergeMessage: document.getElementById('concierge-message'),
@@ -80,13 +86,37 @@ import * as recorder from "./recorder.mjs";
     try {
       const data = await api.json('GET', '/v1/topics');
       data.forEach(d => state.domains[d.id] = d);
-      dom.domainSelect.innerHTML = data.map(d => `<option value="${esc(d.id)}" class="bg-slate-900 text-white">${esc(d.name)}</option>`).join('');
-      if (!state.domains[state.domainId] && data.length) state.domainId = data[0].id;
-      await renderDomain(state.domainId);
+      renderPicker(data);
     } catch (err) {
-      dom.conciergeMessage.textContent = 'Сервер недоступний. Спробуйте пізніше.';
+      dom.pickerStatus.textContent = 'Сервер недоступний. Спробуйте пізніше.';
       console.warn('API error:', err);
     }
+  }
+
+  // The first screen: one card per topic, so nothing is hidden behind a dropdown.
+  function renderPicker(topics) {
+    dom.pickerGrid.innerHTML = '';
+    topics.forEach(d => {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'text-left bg-slate-900/90 border border-slate-800 hover:border-purple-500/60 rounded-2xl p-3 space-y-1 active:scale-95 transition';
+      card.innerHTML = `<div class="text-2xl">${esc(d.icon)}</div><div class="text-xs font-bold text-white">${esc(d.name)}</div><div class="text-[11px] text-slate-400 line-clamp-2">${esc(d.tagline)}</div>`;
+      card.onclick = () => {
+        triggerHaptic('light');
+        renderDomain(d.id);
+      };
+      dom.pickerGrid.appendChild(card);
+    });
+    showPicker();
+  }
+
+  function showPicker() {
+    if (recording) return; // finish the voice turn first
+    state.sessionId = null; // replies still in flight belong to the topic being left
+    dom.picker.classList.remove('hidden');
+    dom.view.classList.add('hidden');
+    dom.bottomBar.classList.add('hidden');
+    window.scrollTo(0, 0);
   }
 
   async function renderDomain(domainId) {
@@ -103,7 +133,11 @@ import * as recorder from "./recorder.mjs";
     } catch (err) {
       dom.conciergeMessage.textContent = 'Не вдалося почати сесію: ' + err.message;
     }
-    dom.domainSelect.value = domainId;
+    dom.domainName.textContent = d.name;
+    dom.picker.classList.add('hidden');
+    dom.view.classList.remove('hidden');
+    dom.bottomBar.classList.remove('hidden');
+    window.scrollTo(0, 0);
     dom.domainIcon.textContent = d.icon;
     dom.domainTagline.textContent = d.tagline;
     dom.conciergeMessage.textContent = d.welcome;
@@ -496,9 +530,9 @@ import * as recorder from "./recorder.mjs";
   }
 
   // 13. Обробники подій
-  dom.domainSelect.onchange = (e) => {
+  dom.topicBtn.onclick = () => {
     triggerHaptic('light');
-    renderDomain(e.target.value);
+    showPicker();
   };
 
   dom.voiceToggle.onclick = () => {
