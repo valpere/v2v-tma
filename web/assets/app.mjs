@@ -2,7 +2,7 @@
  * v2v-tma client: Telegram WebApp SDK, text/voice, server-owned cart, Stars checkout.
  * Pure helpers live in core.mjs (unit-tested), microphone capture in recorder.mjs.
  */
-import { esc, qtyOf as qtyIn, plural, langOf, makeApi, b64ToBytes } from "./core.mjs";
+import { esc, qtyOf as qtyIn, plural, langOf, makeApi, b64ToBytes, welcomeOf } from "./core.mjs";
 import * as recorder from "./recorder.mjs";
 
   // 1. Ініціалізація Telegram WebApp
@@ -40,6 +40,8 @@ import * as recorder from "./recorder.mjs";
     domainIcon: document.getElementById('domain-icon'),
     domainTagline: document.getElementById('domain-tagline'),
     conciergeMessage: document.getElementById('concierge-message'),
+    chatLog: document.getElementById('chat-log'),
+    catalogSection: document.getElementById('catalog-section'),
     quickPrompts: document.getElementById('quick-prompts-container'),
     catalogItems: document.getElementById('catalog-items-container'),
     itemsCountBadge: document.getElementById('items-count-badge'),
@@ -129,11 +131,12 @@ import * as recorder from "./recorder.mjs";
     state.sessionId = null;
     state.cart = { items: [], count: 0, total_uah: 0, total_stars: 0 };
     updateCartUI();
+    let startError = null;
     try {
       const s = await api.json('POST', '/v1/sessions', { topic: domainId });
       state.sessionId = s.session_id;
     } catch (err) {
-      dom.conciergeMessage.textContent = 'Не вдалося почати сесію: ' + err.message;
+      startError = err;
     }
     dom.domainName.textContent = d.name;
     dom.picker.classList.add('hidden');
@@ -143,7 +146,11 @@ import * as recorder from "./recorder.mjs";
     window.scrollTo(0, 0);
     dom.domainIcon.textContent = d.icon;
     dom.domainTagline.textContent = d.tagline;
-    dom.conciergeMessage.textContent = d.welcome;
+    dom.chatLog.innerHTML = '';
+    setStatus('');
+    addMsg('bot', welcomeOf(d));
+    if (startError) addMsg('bot', 'Не вдалося почати сесію: ' + startError.message);
+    dom.catalogSection.classList.toggle('hidden', !(d.items || []).length); // nothing to order: no empty section
     dom.itemsCountBadge.textContent = (d.items || []).length ? `${d.items.length} ${plural(d.items.length, 'позиція', 'позиції', 'позицій')}` : 'лише розмова'; // topics without a catalog have nothing to order
 
     // Швидкі підказки
@@ -262,9 +269,27 @@ import * as recorder from "./recorder.mjs";
     });
   }
 
+  // The conversation: bubbles in a scrollable log (textContent only: replies are model output).
+  function addMsg(who, text) {
+    const el = document.createElement('div');
+    el.className = (who === 'user'
+      ? 'ml-auto max-w-[85%] bg-purple-600 text-white rounded-2xl rounded-br-sm'
+      : 'mr-auto max-w-[90%] bg-slate-800 text-slate-100 rounded-2xl rounded-bl-sm') + ' px-3 py-2 text-sm whitespace-pre-wrap';
+    el.textContent = text;
+    dom.chatLog.appendChild(el);
+    dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
+    return el;
+  }
+
+  // the short line in the card: what is happening right now (listening, recognising)
+  function setStatus(text) {
+    dom.conciergeMessage.textContent = text;
+  }
+
   // A reply, from text or voice: the cart is the server's copy, ui_actions only animate.
-  function showReply(data, heard) {
-    dom.conciergeMessage.textContent = (heard ? `🎤 «${heard}»\n\n` : '') + data.reply;
+  function showReply(data, pending) {
+    pending.textContent = data.reply;
+    dom.chatLog.scrollTop = dom.chatLog.scrollHeight;
     if (state.voiceMode) {
       if (data.audio_b64) playAudio(data.audio_b64, data.audio_type); // the engine's voice
       else if (window.speechSynthesis) speakText(data.reply); // free browser fallback
@@ -278,21 +303,22 @@ import * as recorder from "./recorder.mjs";
   async function sendQuery(text) {
     if (!text || !text.trim()) return;
     if (!state.sessionId) {
-      dom.conciergeMessage.textContent = 'Сесія ще не почалась. Оберіть тему ще раз або спробуйте пізніше.';
+      addMsg('bot', 'Сесія ще не почалась. Оберіть тему ще раз або спробуйте пізніше.');
       return;
     }
     const sid = state.sessionId;
 
-    dom.conciergeMessage.textContent = 'Обмірковую відповідь...';
+    addMsg('user', text);
+    const pending = addMsg('bot', '…');
     animateWave(true);
 
     try {
       const data = await api.json('POST', `/v1/sessions/${sid}/messages`, { text, lang: LANG, speak: state.voiceMode });
       animateWave(false);
-      if (sid === state.sessionId) showReply(data); // else: the topic changed meanwhile
+      if (sid === state.sessionId) showReply(data, pending); // else: the topic changed meanwhile
     } catch (err) {
       animateWave(false);
-      if (sid === state.sessionId) dom.conciergeMessage.textContent = 'Перепрошую, сталася помилка зʼєднання. Спробуйте ще раз.';
+      pending.textContent = 'Перепрошую, сталася помилка зʼєднання. Спробуйте ще раз.';
     }
   }
 
@@ -387,24 +413,29 @@ import * as recorder from "./recorder.mjs";
     }
     triggerHaptic('medium');
     setMicBusy(true);
-    dom.conciergeMessage.textContent = 'Слухаю вас... Натисніть ще раз, щоб надіслати';
+    setStatus('Слухаю вас… натисніть ще раз, щоб надіслати');
     let rec;
     try {
       rec = await recording.done;
     } catch (err) {
       recording = null; voiceBusy = false; setMicBusy(false);
-      dom.conciergeMessage.textContent = 'Запис перервано: ' + err.message;
+      setStatus('');
+      addMsg('bot', 'Запис перервано: ' + err.message);
       return;
     }
     recording = null;
-    dom.conciergeMessage.textContent = 'Розпізнаю...';
+    setStatus('Розпізнаю…');
+    const mine = addMsg('user', '🎤 …');
+    const pending = addMsg('bot', '…');
     try {
       const data = await api.voice(sid, rec.blob, rec.seconds, state.voiceMode);
       if (sid !== state.sessionId) return; // the topic changed meanwhile: that answer is for another conversation
-      showReply(data, data.transcript);
+      mine.textContent = data.transcript ? '🎤 ' + data.transcript : '🎤';
+      showReply(data, pending);
     } catch (err) {
-      if (sid === state.sessionId) dom.conciergeMessage.textContent = 'Не вдалося обробити голос: ' + err.message;
+      pending.textContent = 'Не вдалося обробити голос: ' + err.message;
     } finally {
+      setStatus('');
       voiceBusy = false;
       setMicBusy(false);
     }
@@ -446,7 +477,7 @@ import * as recorder from "./recorder.mjs";
         triggerHaptic('medium');
         dom.micBtn.classList.add('pulse-record', 'bg-rose-600');
         dom.micBtn.classList.remove('bg-purple-600');
-        dom.conciergeMessage.textContent = 'Слухаю вас... Говоріть';
+        setStatus('Слухаю вас… говоріть');
         animateWave(true);
       };
 
@@ -458,6 +489,7 @@ import * as recorder from "./recorder.mjs";
 
       recognition.onerror = () => {
         state.isRecording = false;
+        setStatus('');
         animateWave(false);
         dom.micBtn.classList.remove('pulse-record', 'bg-rose-600');
         dom.micBtn.classList.add('bg-purple-600');
@@ -465,6 +497,7 @@ import * as recorder from "./recorder.mjs";
 
       recognition.onend = () => {
         state.isRecording = false;
+        setStatus('');
         animateWave(false);
         dom.micBtn.classList.remove('pulse-record', 'bg-rose-600');
         dom.micBtn.classList.add('bg-purple-600');

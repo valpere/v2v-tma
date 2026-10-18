@@ -77,3 +77,10 @@ export function encodeWav(chunks, inRate, outRate = 16000) {
   }
   return out;
 }
+
+// The first chat bubble. The engine's `welcome` falls back to the tagline, which the card already
+// shows right above the chat, so a repeat is replaced by a generic greeting.
+export function welcomeOf(topic) {
+  const w = (topic.welcome || '').trim();
+  return w && w !== (topic.tagline || '').trim() ? w : 'Чим можу допомогти? Напишіть або скажіть голосом.';
+}

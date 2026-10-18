@@ -115,3 +115,11 @@ test('voice URL asks the engine to skip speech when sound is off', async () => {
   assert.equal(f.calls[0].url, '/v1/sessions/s/voice?seconds=2&speak=0');
   assert.equal(f.calls[1].url, '/v1/sessions/s/voice?seconds=2');
 });
+
+import { welcomeOf } from '../assets/core.mjs';
+
+test('welcomeOf: the topic welcome, but never a repeat of the tagline shown above it', () => {
+  assert.equal(welcomeOf({ welcome: 'Вітаю!', tagline: 'Піца' }), 'Вітаю!');
+  assert.match(welcomeOf({ welcome: 'Піца', tagline: 'Піца' }), /Чим можу допомогти/); // the engine falls back to the tagline
+  assert.match(welcomeOf({ tagline: 'Піца' }), /Чим можу допомогти/);
+});
