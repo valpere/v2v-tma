@@ -12,9 +12,23 @@
 
   <!-- ВЕРХНЯ ШАПКА: Селектор домену та перемикач режимів -->
   <header id="top-bar" class="hidden sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 py-3">
-    <!-- лише навігація й озвучка; назва, опис та іконка теми -- у картці AI Concierge -->
+    <!-- навігація, індикатор/статус/Online й озвучка; назва, опис та іконка теми -- у картці нижче -->
     <div class="flex items-center justify-between gap-2">
       <button id="topic-btn" type="button" class="text-xs font-semibold text-purple-300 border border-purple-500/40 rounded-full px-3 py-1 hover:text-white active:scale-95 transition">← Теми</button>
+      <!-- індикатор (звукова хвиля), статус, Online: посередині між Теми та озвучкою -->
+      <div id="audio-wave-container" class="flex-1 min-w-0 flex items-center justify-center gap-2">
+        <div class="flex items-center gap-0.5 h-4 shrink-0">
+          <div class="wave-bar w-0.5 bg-purple-500/50 rounded-full h-1"></div>
+          <div class="wave-bar w-0.5 bg-purple-500/60 rounded-full h-1.5"></div>
+          <div class="wave-bar w-0.5 bg-purple-400 rounded-full h-2"></div>
+          <div class="wave-bar w-0.5 bg-purple-300 rounded-full h-1"></div>
+          <div class="wave-bar w-0.5 bg-purple-400 rounded-full h-1.5"></div>
+          <div class="wave-bar w-0.5 bg-purple-500/60 rounded-full h-1"></div>
+          <div class="wave-bar w-0.5 bg-purple-500/40 rounded-full h-1"></div>
+        </div>
+        <p id="concierge-message" class="min-w-0 truncate text-[11px] text-purple-300"></p>
+        <span id="status-badge" class="shrink-0 text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">Online</span>
+      </div>
       <div class="flex items-center bg-slate-800/80 px-2.5 py-1.5 rounded-full border border-slate-700/60 shrink-0">
         <button id="voice-mode-toggle" type="button" title="Озвучувати відповіді голосом" class="text-[11px] font-semibold text-slate-300 hover:text-white transition">
           <span id="voice-mode-label" class="text-slate-400">🔇 Без озвучки</span>
@@ -44,21 +58,6 @@
           <div id="domain-name" class="text-sm font-bold text-white leading-snug"></div>
           <div id="domain-tagline" class="text-[11px] text-slate-400 leading-snug"></div>
         </div>
-      </div>
-
-      <!-- нижній рядок: індикатор (звукова хвиля), статус, Online -->
-      <div id="audio-wave-container" class="mt-2 pt-1.5 border-t border-slate-800/80 flex items-center gap-2 h-6">
-        <div class="flex items-center gap-0.5 h-4 shrink-0">
-          <div class="wave-bar w-0.5 bg-purple-500/50 rounded-full h-1"></div>
-          <div class="wave-bar w-0.5 bg-purple-500/60 rounded-full h-1.5"></div>
-          <div class="wave-bar w-0.5 bg-purple-400 rounded-full h-2"></div>
-          <div class="wave-bar w-0.5 bg-purple-300 rounded-full h-1"></div>
-          <div class="wave-bar w-0.5 bg-purple-400 rounded-full h-1.5"></div>
-          <div class="wave-bar w-0.5 bg-purple-500/60 rounded-full h-1"></div>
-          <div class="wave-bar w-0.5 bg-purple-500/40 rounded-full h-1"></div>
-        </div>
-        <p id="concierge-message" class="flex-1 min-w-0 truncate text-[11px] text-purple-300"></p>
-        <span id="status-badge" class="shrink-0 text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">Online</span>
       </div>
     </div>
 
