@@ -55,6 +55,7 @@ import * as recorder from "./recorder.mjs";
     cartSummaryText: document.getElementById('cart-summary-text'),
     cartSubtotalText: document.getElementById('cart-subtotal-text'),
     checkoutBtn: document.getElementById('checkout-btn'),
+    checkoutHint: document.getElementById('checkout-hint'),
     checkoutStarsBadge: document.getElementById('checkout-stars-badge'),
     checkoutModal: document.getElementById('checkout-modal'),
     closeModalBtn: document.getElementById('close-modal-btn'),
@@ -227,6 +228,12 @@ import * as recorder from "./recorder.mjs";
 
   function updateCartUI() {
     const { count: totalCount, total_uah: totalUAH, total_stars: totalStars } = state.cart;
+
+    // the order waits for the booking the assistant collects in the chat (date, name, phone …)
+    const missing = state.cart.missing_slots || [];
+    dom.checkoutBtn.disabled = missing.length > 0;
+    dom.checkoutBtn.style.opacity = missing.length ? '0.4' : '';
+    dom.checkoutHint.textContent = missing.length ? 'Щоб оплатити, завершіть запис у чаті: ' + missing.join(', ') : '';
 
     if (totalCount > 0) {
       dom.cartBar.classList.remove('hidden');
