@@ -402,6 +402,7 @@ import * as recorder from "./recorder.mjs";
     if (recording) { recording.stop(); return; }
     if (!recorder.recorderSupported()) { listenWithBrowser(); return; }
     if (!state.sessionId || voiceBusy) return;
+    if (playing) playing(); // tapping the mic interrupts the spoken reply, so it is not recorded back
     voiceBusy = true;
     const sid = state.sessionId;
     try {
