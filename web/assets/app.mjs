@@ -87,6 +87,10 @@ import * as recorder from "./recorder.mjs";
   // 5. Завантаження доменів та каталогу
   async function loadDomains() {
     try {
+      // a text-only engine reports no voice: hide the mic and the sound toggle (an older engine has no /v1/features: keep them)
+      const features = await api.json('GET', '/v1/features').catch(() => ({}));
+      if (features.voice_in === false) dom.micBtn.classList.add('hidden');
+      if (features.voice_out === false) dom.voiceToggle.classList.add('hidden');
       const data = await api.json('GET', '/v1/topics');
       data.forEach(d => state.domains[d.id] = d);
       renderPicker(data);
