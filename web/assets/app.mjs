@@ -158,18 +158,8 @@ import * as recorder from "./recorder.mjs";
     dom.catalogSection.classList.toggle('hidden', !(d.items || []).length); // nothing to order: no empty section
     dom.itemsCountBadge.textContent = (d.items || []).length ? `${d.items.length} ${plural(d.items.length, 'позиція', 'позиції', 'позицій')}` : 'лише розмова'; // topics without a catalog have nothing to order
 
-    // Швидкі підказки
-    dom.quickPrompts.innerHTML = '';
-    (d.quick_prompts || []).forEach(promptText => {
-      const btn = document.createElement('button');
-      btn.className = 'bg-slate-800/90 hover:bg-slate-700/90 border border-slate-700/70 text-slate-300 text-xs px-3 py-1.5 rounded-full whitespace-nowrap active:scale-95 transition shadow-sm';
-      btn.textContent = promptText;
-      btn.onclick = () => {
-        triggerHaptic('light');
-        sendQuery(promptText);
-      };
-      dom.quickPrompts.appendChild(btn);
-    });
+    state.quickPrompts = d.quick_prompts;
+    renderPrompts([]);
 
     // Каталог товарів
     dom.catalogItems.innerHTML = '';
@@ -297,6 +287,23 @@ import * as recorder from "./recorder.mjs";
     dom.conciergeMessage.textContent = text;
   }
 
+  // Швидкі підказки: відповіді на слот, який бот питає наступним (`suggestions` рушія),
+  // інакше власні підказки теми.
+  function renderPrompts(suggestions) {
+    const list = suggestions && suggestions.length ? suggestions : state.quickPrompts || [];
+    dom.quickPrompts.innerHTML = '';
+    list.forEach(promptText => {
+      const btn = document.createElement('button');
+      btn.className = 'bg-slate-800/90 hover:bg-slate-700/90 border border-slate-700/70 text-slate-300 text-xs px-3 py-1.5 rounded-full whitespace-nowrap active:scale-95 transition shadow-sm';
+      btn.textContent = promptText;
+      btn.onclick = () => {
+        triggerHaptic('light');
+        sendQuery(promptText);
+      };
+      dom.quickPrompts.appendChild(btn);
+    });
+  }
+
   // A reply, from text or voice: the cart is the server's copy, ui_actions only animate.
   function showReply(data, pending) {
     pending.textContent = data.reply;
@@ -307,6 +314,7 @@ import * as recorder from "./recorder.mjs";
     }
     state.cart = data.cart;
     updateCartUI();
+    renderPrompts(data.suggestions);
     applyUIActions(data.ui_actions || []);
   }
 
