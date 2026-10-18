@@ -287,7 +287,7 @@ import * as recorder from "./recorder.mjs";
     animateWave(true);
 
     try {
-      const data = await api.json('POST', `/v1/sessions/${sid}/messages`, { text, lang: LANG });
+      const data = await api.json('POST', `/v1/sessions/${sid}/messages`, { text, lang: LANG, speak: state.voiceMode });
       animateWave(false);
       if (sid === state.sessionId) showReply(data); // else: the topic changed meanwhile
     } catch (err) {
@@ -399,7 +399,7 @@ import * as recorder from "./recorder.mjs";
     recording = null;
     dom.conciergeMessage.textContent = 'Розпізнаю...';
     try {
-      const data = await api.voice(sid, rec.blob, rec.seconds);
+      const data = await api.voice(sid, rec.blob, rec.seconds, state.voiceMode);
       if (sid !== state.sessionId) return; // the topic changed meanwhile: that answer is for another conversation
       showReply(data, data.transcript);
     } catch (err) {

@@ -77,3 +77,41 @@ test('voice posts the raw recording with its own content type and duration', asy
   assert.equal(init.headers.Authorization, 'tma INIT');
   assert.equal(init.body, blob);
 });
+
+import { encodeWav } from '../assets/core.mjs';
+
+const u32 = (b, o) => new DataView(b.buffer, b.byteOffset).getUint32(o, true);
+const u16 = (b, o) => new DataView(b.buffer, b.byteOffset).getUint16(o, true);
+const i16 = (b, o) => new DataView(b.buffer, b.byteOffset).getInt16(o, true);
+const tag = (b, o) => String.fromCharCode(...b.slice(o, o + 4));
+
+test('encodeWav writes a 16 kHz mono PCM16 file, downsampling by averaging', () => {
+  const x = new Float32Array(48000).fill(0.5); // one second at 48 kHz
+  const wav = encodeWav([x.subarray(0, 20000), x.subarray(20000)], 48000);
+  assert.equal(tag(wav, 0), 'RIFF');
+  assert.equal(tag(wav, 8), 'WAVE');
+  assert.equal(u16(wav, 20), 1); // PCM
+  assert.equal(u16(wav, 22), 1); // mono
+  assert.equal(u32(wav, 24), 16000);
+  assert.equal(u16(wav, 34), 16);
+  assert.equal(u32(wav, 40), 32000); // 16000 samples * 2 bytes
+  assert.equal(wav.length, 44 + 32000);
+  assert.equal(u32(wav, 4), wav.length - 8);
+  assert.equal(i16(wav, 44), 16383); // 0.5 * 32767, truncated
+});
+
+test('encodeWav clamps and survives silence and empty input', () => {
+  const loud = encodeWav([new Float32Array([2, -2, 2, -2])], 16000);
+  assert.equal(i16(loud, 44), 32767);
+  assert.equal(i16(loud, 46), -32768);
+  assert.equal(encodeWav([], 16000).length, 44);
+});
+
+test('voice URL asks the engine to skip speech when sound is off', async () => {
+  const f = fakeFetch(200, {});
+  const blob = { type: 'audio/wav', size: 1 };
+  await makeApi(f, '').voice('s', blob, 2, false);
+  await makeApi(f, '').voice('s', blob, 2, true);
+  assert.equal(f.calls[0].url, '/v1/sessions/s/voice?seconds=2&speak=0');
+  assert.equal(f.calls[1].url, '/v1/sessions/s/voice?seconds=2');
+});

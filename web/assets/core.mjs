@@ -44,7 +44,36 @@ export function makeApi(fetchFn, initData) {
     json: (method, path, body) =>
       run(path, { method, headers: { 'Content-Type': 'application/json', ...auth }, body: body ? JSON.stringify(body) : undefined }),
     // the recording goes up raw; its container is the Content-Type
-    voice: (sessionId, blob, seconds) =>
-      run(`/v1/sessions/${sessionId}/voice?seconds=${seconds}`, { method: 'POST', headers: { 'Content-Type': blob.type, ...auth }, body: blob }),
+    // speak=false (sound off): the engine skips the speech synthesis, which is the part that costs money
+    voice: (sessionId, blob, seconds, speak = true) =>
+      run(`/v1/sessions/${sessionId}/voice?seconds=${seconds}${speak ? '' : '&speak=0'}`, { method: 'POST', headers: { 'Content-Type': blob.type, ...auth }, body: blob }),
   };
+}
+
+// encodeWav turns captured mono float chunks (Web Audio, any sample rate) into a 16 kHz PCM16 WAV:
+// the recorder's fallback where MediaRecorder is missing (Telegram Desktop's webview). 16 kHz is
+// what speech-to-text wants anyway and keeps 30 s under the engine's 1 MiB upload cap.
+export function encodeWav(chunks, inRate, outRate = 16000) {
+  const n = chunks.reduce((s, c) => s + c.length, 0);
+  const all = new Float32Array(n);
+  let o = 0;
+  for (const c of chunks) { all.set(c, o); o += c.length; }
+  const ratio = inRate / outRate;
+  const m = Math.floor(n / ratio);
+  const out = new Uint8Array(44 + m * 2);
+  const v = new DataView(out.buffer);
+  const str = (off, s) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + m * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, outRate, true); v.setUint32(28, outRate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  str(36, 'data'); v.setUint32(40, m * 2, true);
+  for (let i = 0; i < m; i++) {
+    const a = Math.floor(i * ratio);
+    const b = Math.min(n, Math.max(a + 1, Math.floor((i + 1) * ratio)));
+    let sum = 0;
+    for (let j = a; j < b; j++) sum += all[j];
+    const s = Math.max(-1, Math.min(1, sum / (b - a)));
+    v.setInt16(44 + i * 2, s < 0 ? s * 32768 : s * 32767, true);
+  }
+  return out;
 }
