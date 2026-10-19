@@ -20,6 +20,7 @@ import * as recorder from "./recorder.mjs";
     domainId: null, // nothing is chosen until the user picks a topic
     domains: {},
     sessionId: null,
+    said: new Set(), // texts the client already sent (a button with the same text is not offered again)
     cart: { items: [], count: 0, total_uah: 0, total_stars: 0 }, // authoritative copy from the server
     voiceMode: false, // spoken replies: false = text only (free), true = the engine's voice; the mic needs no toggle
     isRecording: false,
@@ -158,6 +159,7 @@ import * as recorder from "./recorder.mjs";
     dom.catalogSection.classList.toggle('hidden', !(d.items || []).length); // nothing to order: no empty section
     dom.itemsCountBadge.textContent = (d.items || []).length ? `${d.items.length} ${plural(d.items.length, 'позиція', 'позиції', 'позицій')}` : 'лише розмова'; // topics without a catalog have nothing to order
 
+    state.said = new Set();
     state.quickPrompts = d.quick_prompts;
     renderPrompts([]);
 
@@ -289,8 +291,11 @@ import * as recorder from "./recorder.mjs";
 
   // Швидкі підказки: відповіді на слот, який бот питає наступним (`suggestions` рушія),
   // інакше власні підказки теми.
+  const promptKey = t => t.toLowerCase().replace(/[\s.!?…]+$/g, '').replace(/\s+/g, ' ').trim();
+
   function renderPrompts(suggestions) {
-    const list = suggestions && suggestions.length ? suggestions : state.quickPrompts || [];
+    const list = (suggestions && suggestions.length ? suggestions : state.quickPrompts || [])
+      .filter(p => !state.said.has(promptKey(p)));
     dom.quickPrompts.innerHTML = '';
     list.forEach(promptText => {
       const btn = document.createElement('button');
@@ -327,6 +332,7 @@ import * as recorder from "./recorder.mjs";
     }
     const sid = state.sessionId;
 
+    state.said.add(promptKey(text));
     addMsg('user', text);
     const pending = addMsg('bot', '…');
     animateWave(true);
