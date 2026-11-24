@@ -1,3 +1,3 @@
 module github.com/valpere/v2v-tma
 
-go 1.26
+go 1.26.11
